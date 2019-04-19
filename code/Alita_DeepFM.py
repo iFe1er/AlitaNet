@@ -1,5 +1,3 @@
-#F(Field)NN+WideAndDeep->EmbdWideAndDeep->DeepFM不再接收
-#tf.nn.embedding_lookup : The returned tensor has shape shape(ids) + shape(params)[1:].
 import tensorflow as tf
 import numpy as np
 from sklearn.base import BaseEstimator,TransformerMixin
@@ -9,7 +7,6 @@ from utils import batcher
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
     def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu):
-
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
