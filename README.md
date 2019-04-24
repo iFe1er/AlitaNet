@@ -6,4 +6,4 @@
 <img src="resource/logo8.png" alt="Sample"  width="400" height="225">  
 
 
-AlitaNet: **A** c**li**ck **t**hrough r**a**te (ctr) prediction deep **Net**work, including LR, FM, DeepFM, etc.   
+AlitaNet: **A** c**li**ck **t**hrough r**a**te (ctr) prediction deep **Net**work implementation with TensorFlow, including LR, FM, DeepFM, xDeepFM, etc.   
