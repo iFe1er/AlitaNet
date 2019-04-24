@@ -9,23 +9,15 @@ if __name__=='__main__':
     data_dir="../data/movie_lens_1m/"
     train = pd.read_csv(data_dir+'train_rating.csv')
     test = pd.read_csv(data_dir+'test_rating.csv')
-
+    data=pd.concat([train,test],axis=0)
     y_train = train['ratings'].values.reshape(-1, 1)  # 一列
     y_test = test['ratings'].values.reshape(-1, 1)
 
-    train=train.merge(pd.read_csv(data_dir+'user.csv')[['user_id','gender','age','occupation']],on='user_id')
-    test=test.merge(pd.read_csv(data_dir+'user.csv')[['user_id','gender','age','occupation']],on='user_id')
 
-    #train=train.merge(pd.read_csv(data_dir+'movie.csv')[['movie_id','genres']],on='movie_id')
-    #test=test.merge(pd.read_csv(data_dir+'movie.csv')[['movie_id','genres']],on='movie_id')
-
-    print(train.columns)
-    features=['user_id','movie_id','gender','age','occupation']#,'genres']
-
-    data = pd.concat([train, test], axis=0)
+    features=['user_id','movie_id']
     features_sizes=[data[f].nunique() for f in features]
     print(features_sizes)
-    print("DeepFM")
+    print("FM&Deep")
 
     from sklearn.preprocessing import LabelEncoder
     lbl=LabelEncoder()
@@ -36,15 +28,12 @@ if __name__=='__main__':
 
     ls=[]
     for _ in range(5):
-        #model=LR(features_sizes)
-        #model=FM(features_sizes,k=16)
+        #model=FM(features_sizes,k=16)#LR(features_sizes)
         #model=MLP(features_sizes,deep_layers=(16,16),k=16)#WideAndDeep(features_sizes, deep_layers=(16, 16), k=16)
         model = DeepFM(features_sizes, deep_layers=(16, 16), k=16)
         #model=FMAndDeep(features_sizes, deep_layers=(16, 16), k=16)
         best_score=model.fit(train[features],test[features],y_train,y_test,lr=0.0005,N_EPOCH=150,batch_size=500,early_stopping_rounds=20)
         ls.append(best_score)
-    print(model)
     print(pd.Series(ls).mean(),pd.Series(ls).min())
     print(str(ls))
-
 
