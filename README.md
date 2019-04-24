@@ -3,7 +3,7 @@
 ![](https://img.shields.io/badge/license-MIT-000000.svg)  
 
 <p>
-	<img src="resource/logo2.jpg" alt="Sample"  width="106" height="46">
+	<img src="resource/logo2.jpg" alt="Sample"  width="200" height="90">
 </p>
 
 #![Alt text](resource/logo2.jpg =106x46)  
