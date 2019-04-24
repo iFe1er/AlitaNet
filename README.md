@@ -3,7 +3,7 @@
 ![](https://img.shields.io/badge/license-MIT-000000.svg)  
 
 
-<img src="resource/logo4.png" alt="Sample"  width="300" height="150">  
+<img src="resource/logo5.png" alt="Sample"  width="400" height="200">  
 
 
 AlitaNet: **A** c**li**ck **t**hrough r**a**te (ctr) prediction deep **Net**work, including LR, FM, DeepFM, etc.   
