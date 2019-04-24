@@ -1,4 +1,4 @@
-![Alt text](resource/logo.jpg?raw=true)  
+![Alt text](resource/logo.jpg)  
 # AlitaNet
 ![](https://img.shields.io/badge/language-python-blue.svg)
 ![](https://img.shields.io/badge/license-MIT-000000.svg)
