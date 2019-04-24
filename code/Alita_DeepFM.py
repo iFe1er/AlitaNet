@@ -6,7 +6,7 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
@@ -14,6 +14,10 @@ class Alita_DeepFM(BaseEstimator):
         self.deep_layers=deep_layers
         self.activation=activation
         self.k=k #embedding size K
+        self.use_LR=use_LR
+        self.use_FM=use_FM
+        self.use_MLP=use_MLP
+
         initializer=tf.contrib.layers.xavier_initializer()
 
         self.w=tf.Variable(initializer([self.num_features,1]))
@@ -33,6 +37,7 @@ class Alita_DeepFM(BaseEstimator):
             self.bias['b'+str(i+1)]=tf.Variable(initializer([layer]))
         self.weights['out']= tf.Variable(initializer([self.deep_layers[-1],1]))
         self.bias['out'] = tf.Variable(initializer([1]))
+        print("Model Init. Prediction Layer: LR %s; FM %s; MLP %s" % (use_LR,use_FM,use_MLP))
 
     def _init_session(self):
         return tf.Session()
@@ -82,10 +87,23 @@ class Alita_DeepFM(BaseEstimator):
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
         self.y=tf.placeholder(tf.float32,[None,1])
 
-        self.embedding=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
-        MLP_in=tf.reshape(self.embedding,[-1,self.fields*self.k])
 
-        self.pred=self.MLP(MLP_in,self.weights,self.bias)+self.FM2(self.embedding)+self.LR(self.ids,self.w,self.b)
+        if self.use_FM or self.use_MLP:
+            self.embedding=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
+        if self.use_MLP:
+            MLP_in=tf.reshape(self.embedding,[-1,self.fields*self.k])
+
+        self.pred=0
+        if self.use_LR:
+            self.pred=self.LR(self.ids,self.w,self.b)
+        if self.use_FM:
+            self.pred+= self.FM2(self.embedding)
+        if self.use_MLP:
+            self.pred+=self.MLP(MLP_in, self.weights, self.bias)
+        assert self.pred is not None,"must have one predicion layer"
+
+
+
         if self.loss_type=='rmse':
             self.loss = tf.sqrt(tf.reduce_mean(tf.square(self.y - self.pred)))
         elif self.loss_type=='mse':
@@ -109,7 +127,12 @@ class Alita_DeepFM(BaseEstimator):
                 _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by})
                 train_loss+=l
             train_loss/=total_batches
-            test_loss=self.sess.run(self.loss,feed_dict={self.ids:ids_test,self.y:y_test})
+
+            test_loss=0.
+            for bx,by in batcher(ids_test,y_test,batch_size):
+                test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
+            test_loss/=int(ids_test.shape[0]/batch_size)
+
             print("epoch:%s train_loss:%s test_loss:%s" %(epoch+1,train_loss,test_loss))
             #print("self.pred=",self.sess.run(self.pred,feed_dict={self.ids:ids_test,self.y:y_test}))
             #print("self.y=",y_test)
@@ -120,11 +143,11 @@ class Alita_DeepFM(BaseEstimator):
             if epoch+1-cur_best_rounds>=early_stopping_rounds:
                 print("Early Stopping because not improved for %s rounds" % early_stopping_rounds)
                 self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
-                best_score = self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test, })
+                best_score = cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test, })
                 print("Best Score:",best_score,' at round ',cur_best_rounds)
                 return best_score
         self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
-        best_score=self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,})
+        best_score=cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,})
         print("Best Score:", best_score,' at round ',cur_best_rounds)
         return best_score
 
@@ -140,7 +163,7 @@ class Alita_DeepFM(BaseEstimator):
 if __name__ == '__main__':
     import pandas as pd
     np.random.seed(2019)
-    data_dir="../data/movie_lens_1k/"
+    data_dir="../data/movie_lens_100k/"
     train = pd.read_csv(data_dir+'ua.base', sep='\t', names=['user_id', 'movie_id', 'ratings', 'time'])
     test = pd.read_csv(data_dir+'ua.test', sep='\t', names=['user_id', 'movie_id', 'ratings', 'time'])
     data=pd.concat([train,test],axis=0)
