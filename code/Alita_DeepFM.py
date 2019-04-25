@@ -5,7 +5,7 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
@@ -17,28 +17,37 @@ class Alita_DeepFM(BaseEstimator):
         self.use_FM=use_FM
         self.use_MLP=use_MLP
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
+        self.attention_FM=attention_FM#同时代表attention hidden layer size
         assert isinstance(self.FM_ignore_interaction,list),"FM_ignore_interaction type error"
 
         initializer=tf.contrib.layers.xavier_initializer()
+        if self.use_LR:
+            self.w=tf.Variable(initializer([self.num_features,1]))
+            self.b=tf.Variable(initializer([1]))
+        if self.use_FM or self.use_MLP:
+            #[Embedding]
+            self.embedding_weights=tf.Variable(initializer([self.num_features,k])) # sum_features_sizes,k
+        if self.use_FM and self.attention_FM:
+            self.attention_t=self.attention_FM # define t (type int)
+            self.AFM_weights = {}
+            self.AFM_weights['attention_W']=tf.Variable(initializer([self.k,self.attention_t]))#shape=(k,t)
+            self.AFM_weights['attention_b']=tf.Variable(initializer([self.attention_t]))  # shape=(k,t)
+            self.AFM_weights['projection_h']=tf.Variable(initializer([self.attention_t,1]))
+            self.AFM_weights['projection_p']=tf.Variable(initializer([self.k,1]))
 
-        self.w=tf.Variable(initializer([self.num_features,1]))
-        self.b=tf.Variable(initializer([1]))
-
-        #[Embedding]
-        self.embedding_weights=tf.Variable(initializer([self.num_features,k])) # sum_features_sizes,k
-
-        #MLP weights
-        self.weights, self.bias = {}, {}
-        self.MLP_n_input=k*self.fields
-        for i,layer in enumerate(self.deep_layers):
-            if i==0:
-                self.weights['h'+str(i+1)]=tf.Variable(initializer([self.MLP_n_input,layer]))
-            else:
-                self.weights['h'+str(i+1)] = tf.Variable(initializer([self.deep_layers[i-1], layer]))
-            self.bias['b'+str(i+1)]=tf.Variable(initializer([layer]))
-        self.weights['out']= tf.Variable(initializer([self.deep_layers[-1],1]))
-        self.bias['out'] = tf.Variable(initializer([1]))
-        print("Model Init. Prediction Layer: LR %s; FM %s; MLP %s" % (use_LR,use_FM,use_MLP))
+        if self.use_MLP:
+            #MLP weights
+            self.weights, self.bias = {}, {}
+            self.MLP_n_input=k*self.fields
+            for i,layer in enumerate(self.deep_layers):
+                if i==0:
+                    self.weights['h'+str(i+1)]=tf.Variable(initializer([self.MLP_n_input,layer]))
+                else:
+                    self.weights['h'+str(i+1)] = tf.Variable(initializer([self.deep_layers[i-1], layer]))
+                self.bias['b'+str(i+1)]=tf.Variable(initializer([layer]))
+            self.weights['out']= tf.Variable(initializer([self.deep_layers[-1],1]))
+            self.bias['out'] = tf.Variable(initializer([1]))
+        print("Model Inited. Prediction Layer: LR %s; FM %s; MLP %s" % (use_LR,use_FM,use_MLP))
 
     def _init_session(self):
         return tf.Session()
@@ -90,6 +99,22 @@ class Alita_DeepFM(BaseEstimator):
                 cross_term=cross_term+tf.reduce_sum(embedding[:,i,:]*embedding[:,j,:],axis=1,keepdims=True)#(None,k)->(None,1)
         return cross_term
 
+    def AFM(self,embedding,AFM_weights):
+        cross_term=[]
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！！不压缩成(None,1)
+        cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
+        attention_space=tf.nn.relu(tf.tensordot(cross_term,AFM_weights['attention_W'],axes=[[2],[0]])+AFM_weights['attention_b']) #attention_W:(k,t) out:(None,c,t)  +attention_b(t)=(None,c,t)
+        att_score=tf.tensordot(attention_space,AFM_weights['projection_h'],axes=[[2],[0]])#(None,c,t)*(t,1)=(None,c,1)
+        normalize_att_score=tf.nn.softmax(att_score)#(None,c,1)
+        attention_out=cross_term*normalize_att_score#(None,c,k)*(None,c,1)=(None,c,k)
+        attention_out=tf.reduce_sum(attention_out,axis=1)#Sum pooling on cross terms. Get (None,k)
+        return tf.matmul(attention_out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
+
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         for i,column in enumerate(ids_train.columns):
@@ -102,17 +127,21 @@ class Alita_DeepFM(BaseEstimator):
 
         if self.use_FM or self.use_MLP:
             self.embedding=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
-        if self.use_MLP:
-            MLP_in=tf.reshape(self.embedding,[-1,self.fields*self.k])
 
         self.pred=0
         if self.use_LR:
             self.pred=self.LR(self.ids,self.w,self.b)
-        if self.use_FM and len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
-            self.pred+= self.FM2(self.embedding)
-        if self.use_FM and len(self.FM_ignore_interaction)>0:
-            self.pred+=self.FMDE(self.embedding)
+
+        if self.use_FM and not self.attention_FM:
+            if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
+                self.pred+= self.FM2(self.embedding)
+            if len(self.FM_ignore_interaction)>0:
+                self.pred+=self.FMDE(self.embedding)
+        if self.use_FM and self.attention_FM:
+            self.pred+= self.AFM(self.embedding,self.AFM_weights)
+
         if self.use_MLP:
+            MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)
         assert self.pred is not None,"must have one predicion layer"
 
