@@ -110,8 +110,8 @@ class Alita_DeepFM(BaseEstimator):
         cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
         attention_space=tf.nn.relu(tf.tensordot(cross_term,AFM_weights['attention_W'],axes=[[2],[0]])+AFM_weights['attention_b']) #attention_W:(k,t) out:(None,c,t)  +attention_b(t)=(None,c,t)
         att_score=tf.tensordot(attention_space,AFM_weights['projection_h'],axes=[[2],[0]])#(None,c,t)*(t,1)=(None,c,1)
-        normalize_att_score=tf.nn.softmax(att_score)#(None,c,1)
-        attention_out=cross_term*normalize_att_score#(None,c,k)*(None,c,1)=(None,c,k)
+        self.normalize_att_score=tf.nn.softmax(att_score)#(None,c,1)
+        attention_out=cross_term*self.normalize_att_score#(None,c,k)*(None,c,1)=(None,c,k)
         attention_out=tf.reduce_sum(attention_out,axis=1)#Sum pooling on cross terms. Get (None,k)
         return tf.matmul(attention_out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
 
@@ -121,6 +121,9 @@ class Alita_DeepFM(BaseEstimator):
             if i>=1:
                 ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
                 ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
+        if self.attention_FM:#储存为classs变量并用在get_attention里获取attention
+            self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
+
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
         self.y=tf.placeholder(tf.float32,[None,1])
 
@@ -202,6 +205,13 @@ class Alita_DeepFM(BaseEstimator):
         self.output=self.sess.run(self.pred,feed_dict={self.ids: ids_pred,})
         return self.output
 
+    def get_attention_mask(self):
+        if not self.attention_FM:
+            return
+        self.attention_masks=[]
+        for bx, by in batcher(self.ids_test,self.y_test, 500):
+            self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by}))
+        return np.array(self.attention_masks)
 
 if __name__ == '__main__':
     import pandas as pd

@@ -35,7 +35,7 @@ if __name__=='__main__':
         test[c]=lbl.transform(list(test[c]))
 
     ls=[]
-    for _ in range(5):
+    for _ in range(1):
         #model=LR(features_sizes)
         #model=FM(features_sizes,k=16)
         #model=MLP(features_sizes,deep_layers=(16,16),k=16)#WideAndDeep(features_sizes, deep_layers=(16, 16), k=16)
@@ -44,8 +44,8 @@ if __name__=='__main__':
         #model = FM(features_sizes, k=16, FM_ignore_interaction=[(0, 2), (0, 3), (0, 4)])
         #model = DeepFM(features_sizes, deep_layers=(16, 16), k=16, FM_ignore_interaction=[(0, 2), (0, 3), (0, 4)])
         #model = FMAndDeep(features_sizes, deep_layers=(16, 16), k=16 , FM_ignore_interaction=[(0,2),(0,3),(0,4)])
-        #model = AFM(features_sizes,k=16,attention_FM=10)
-        model = AFM(features_sizes, k=16, attention_FM=10,FM_ignore_interaction=[(0,2),(0,3),(0,4)])
+        model = AFM(features_sizes,k=16,attention_FM=10)
+        #model = AFM(features_sizes, k=16, attention_FM=10,FM_ignore_interaction=[(0,2),(0,3),(0,4)])#not that good
         print(model)
         best_score=model.fit(train[features],test[features],y_train,y_test,lr=0.0005,N_EPOCH=150,batch_size=500,early_stopping_rounds=20)
         ls.append(best_score)
@@ -53,4 +53,9 @@ if __name__=='__main__':
     print(pd.Series(ls).mean(),pd.Series(ls).min())
     print(str(ls))
 
-
+    '''
+    #observe AFM attention mask.
+    t = model.model.get_attention_mask()
+    tt=np.vstack(t)#tt.shape=(197656, 10, 1)
+    print(tt.mean(axis=0))
+    '''
