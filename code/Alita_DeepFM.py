@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from sklearn.base import BaseEstimator,TransformerMixin
-from sklearn.preprocessing import StandardScaler
+from sklearn.base import BaseEstimator
 from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
@@ -54,7 +53,7 @@ class Alita_DeepFM(BaseEstimator):
 
     def MLP(self,x,weights,bias):
         last_layer=None
-        for i,layer in enumerate(self.deep_layers):
+        for i,_ in enumerate(self.deep_layers):
             if i==0:
                 last_layer=self.activation(tf.matmul(x,weights['h1'])+bias['b1'])
             else:
