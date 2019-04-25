@@ -6,7 +6,7 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
@@ -17,6 +17,8 @@ class Alita_DeepFM(BaseEstimator):
         self.use_LR=use_LR
         self.use_FM=use_FM
         self.use_MLP=use_MLP
+        self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
+        assert isinstance(self.FM_ignore_interaction,list),"FM_ignore_interaction type error"
 
         initializer=tf.contrib.layers.xavier_initializer()
 
@@ -78,6 +80,17 @@ class Alita_DeepFM(BaseEstimator):
         cross_term=0.5*tf.reduce_sum(square_sum-sum_square,axis=1,keepdims=True)#(None,1)
         return cross_term
 
+    #FM_DependencyEliminate,求每个不同field交叉内积的和，但去掉了依赖的包含交叉
+    def FMDE(self,embedding):#embedding:(None,field,k)
+        cross_term=0
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                cross_term=cross_term+tf.reduce_sum(embedding[:,i,:]*embedding[:,j,:],axis=1,keepdims=True)#(None,k)->(None,1)
+        return cross_term
+
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         for i,column in enumerate(ids_train.columns):
@@ -96,8 +109,10 @@ class Alita_DeepFM(BaseEstimator):
         self.pred=0
         if self.use_LR:
             self.pred=self.LR(self.ids,self.w,self.b)
-        if self.use_FM:
+        if self.use_FM and len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
             self.pred+= self.FM2(self.embedding)
+        if self.use_FM and len(self.FM_ignore_interaction)>0:
+            self.pred+=self.FMDE(self.embedding)
         if self.use_MLP:
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)
         assert self.pred is not None,"must have one predicion layer"

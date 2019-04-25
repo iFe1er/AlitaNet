@@ -25,7 +25,7 @@ if __name__=='__main__':
     data = pd.concat([train, test], axis=0)
     features_sizes=[data[f].nunique() for f in features]
     print(features_sizes)
-    print("DeepFM")
+    print("FMAndDeep")
 
     from sklearn.preprocessing import LabelEncoder
     lbl=LabelEncoder()
@@ -39,8 +39,11 @@ if __name__=='__main__':
         #model=LR(features_sizes)
         #model=FM(features_sizes,k=16)
         #model=MLP(features_sizes,deep_layers=(16,16),k=16)#WideAndDeep(features_sizes, deep_layers=(16, 16), k=16)
-        model = DeepFM(features_sizes, deep_layers=(16, 16), k=16)
-        #model=FMAndDeep(features_sizes, deep_layers=(16, 16), k=16)
+        #model = DeepFM(features_sizes, deep_layers=(16, 16), k=16)
+        model=FMAndDeep(features_sizes, deep_layers=(16, 16), k=16)
+        #model = FM(features_sizes, k=16, FM_ignore_interaction=[(0, 2), (0, 3), (0, 4)])
+        #model = DeepFM(features_sizes, deep_layers=(16, 16), k=16, FM_ignore_interaction=[(0, 2), (0, 3), (0, 4)])
+        #model = FMAndDeep(features_sizes, deep_layers=(16, 16), k=16 , FM_ignore_interaction=[(0,2),(0,3),(0,4)])
         best_score=model.fit(train[features],test[features],y_train,y_test,lr=0.0005,N_EPOCH=150,batch_size=500,early_stopping_rounds=20)
         ls.append(best_score)
     print(model)
