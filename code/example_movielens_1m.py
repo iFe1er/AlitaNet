@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM
 
 
 if __name__=='__main__':
@@ -37,7 +37,7 @@ if __name__=='__main__':
     ls=[]
     for _ in range(5):
         #model=LR(features_sizes)
-        model=FM(features_sizes,k=16)
+        #model=FM(features_sizes,k=16)
         #model=MLP(features_sizes,deep_layers=(16,16),k=16)#WideAndDeep(features_sizes, deep_layers=(16, 16), k=16)
         #model = DeepFM(features_sizes, deep_layers=(16, 16), k=16)
         #model=FMAndDeep(features_sizes, deep_layers=(16, 16), k=16)
@@ -46,6 +46,7 @@ if __name__=='__main__':
         #model = FMAndDeep(features_sizes, deep_layers=(16, 16), k=16 , FM_ignore_interaction=[(0,2),(0,3),(0,4)])
         #model = AFM(features_sizes,k=16,attention_FM=10)
         #model = AFM(features_sizes, k=16, attention_FM=10,FM_ignore_interaction=[(0,2),(0,3),(0,4)])#not that good
+        model = NFM(features_sizes, k=16)
         print(model)
         best_score=model.fit(train[features],test[features],y_train,y_test,lr=0.0005,N_EPOCH=150,batch_size=500,early_stopping_rounds=20)
         ls.append(best_score)

@@ -5,7 +5,7 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
@@ -18,6 +18,7 @@ class Alita_DeepFM(BaseEstimator):
         self.use_MLP=use_MLP
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
+        self.use_NFM=use_NFM
         assert isinstance(self.FM_ignore_interaction,list),"FM_ignore_interaction type error"
 
         initializer=tf.contrib.layers.xavier_initializer()
@@ -34,6 +35,15 @@ class Alita_DeepFM(BaseEstimator):
             self.AFM_weights['attention_b']=tf.Variable(initializer([self.attention_t]))  # shape=(k,t)
             self.AFM_weights['projection_h']=tf.Variable(initializer([self.attention_t,1]))
             self.AFM_weights['projection_p']=tf.Variable(initializer([self.k,1]))
+        if self.use_FM and self.use_NFM:
+            self.NFM_weights={}
+            self.NFM_weights['W1']=tf.Variable(initializer([self.k,self.k]))
+            self.NFM_weights['W2']=tf.Variable(initializer([self.k,self.k]))
+            self.NFM_weights['b1']=tf.Variable(initializer([self.k]))
+            self.NFM_weights['b2']=tf.Variable(initializer([self.k]))
+            self.NFM_weights['Wout']=tf.Variable(initializer([self.k,1]))
+            self.NFM_weights['bout']=tf.Variable(initializer([1]))
+
 
         if self.use_MLP:
             #MLP weights
@@ -115,6 +125,14 @@ class Alita_DeepFM(BaseEstimator):
         attention_out=tf.reduce_sum(attention_out,axis=1)#Sum pooling on cross terms. Get (None,k)
         return tf.matmul(attention_out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
 
+    def NFM(self,embedding,NFM_weights):
+        square_sum=tf.square(tf.reduce_sum(embedding,axis=1))#(None,k)
+        sum_square=tf.reduce_sum(tf.square(embedding),axis=1)#(None,k)
+        cross_term_vec=square_sum-sum_square#(None,k)
+        h1=self.activation(tf.matmul(cross_term_vec,NFM_weights['W1'])+NFM_weights['b1'])
+        h2=self.activation(tf.matmul(h1,NFM_weights['W2'])+NFM_weights['b2'])
+        return tf.matmul(h2,NFM_weights['Wout'])+NFM_weights['bout']
+
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         for i,column in enumerate(ids_train.columns):
@@ -135,12 +153,17 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_LR:
             self.pred=self.LR(self.ids,self.w,self.b)
 
-        if self.use_FM and not self.attention_FM:
+        if self.use_NFM:
+            print("use NFM")
+            self.pred+=self.NFM(self.embedding,self.NFM_weights)
+        elif self.use_FM and not self.attention_FM:
+            print("use FM")
             if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
                 self.pred+= self.FM2(self.embedding)
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
-        if self.use_FM and self.attention_FM:
+        elif self.use_FM and self.attention_FM:
+            print("use AFM")
             self.pred+= self.AFM(self.embedding,self.AFM_weights)
 
         if self.use_MLP:
