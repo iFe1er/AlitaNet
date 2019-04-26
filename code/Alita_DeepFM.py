@@ -153,6 +153,7 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_LR:
             self.pred=self.LR(self.ids,self.w,self.b)
 
+        #only one FM will be used.
         if self.use_NFM:
             print("use NFM")
             self.pred+=self.NFM(self.embedding,self.NFM_weights)
