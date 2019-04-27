@@ -19,6 +19,14 @@ class Alita_DeepFM(BaseEstimator):
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
         self.use_NFM=use_NFM
+
+        self.c=0#cross terms
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                self.c+=1
+
         assert isinstance(self.FM_ignore_interaction,list),"FM_ignore_interaction type error"
 
         initializer=tf.contrib.layers.xavier_initializer()
@@ -34,7 +42,31 @@ class Alita_DeepFM(BaseEstimator):
             self.AFM_weights['attention_W']=tf.Variable(initializer([self.k,self.attention_t]))#shape=(k,t)
             self.AFM_weights['attention_b']=tf.Variable(initializer([self.attention_t]))  # shape=(k,t)
             self.AFM_weights['projection_h']=tf.Variable(initializer([self.attention_t,1]))
-            self.AFM_weights['projection_p']=tf.Variable(initializer([self.k,1]))
+            self.AFM_weights['projection_p'] = tf.Variable(initializer([self.k, 1]))
+
+            #SAFM:
+            #self.AFM_weights['downsample_W'] = tf.Variable(initializer([self.c, 1]))
+
+            #CFM:
+            self.AFM_weights['conv_W']=tf.Variable(initializer([self.c*self.k,1]))
+            self.oup=1
+            self.AFM_weights['filter'] = tf.Variable(initializer([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
+            self.AFM_weights['proj']=tf.Variable(initializer([self.oup,1]))
+
+            #CNFM:
+            h1,h2=8,4
+            self.h1,self.h2=h1,h2
+            self.AFM_weights['h1_W']=tf.Variable(initializer([self.c,h1]))
+            self.AFM_weights['h1_b']=tf.Variable(initializer([h1]))
+            self.AFM_weights['h2_W']=tf.Variable(initializer([h1,h2]))
+            self.AFM_weights['h2_b']=tf.Variable(initializer([h2]))
+            self.AFM_weights['out_W']=tf.Variable(initializer([h2,1]))
+            self.AFM_weights['out_b']=tf.Variable(initializer([1]))
+            self.AFM_weights['filter_h1']= tf.Variable(initializer([h1,self.k,1,1]))
+            self.AFM_weights['filter_h2']= tf.Variable(initializer([h2,self.k,1,1]))
+            self.AFM_weights['filter_out']=tf.Variable(initializer([1, self.k,1,1]))
+
+
         if self.use_FM and self.use_NFM:
             self.NFM_weights={}
             self.NFM_weights['W1']=tf.Variable(initializer([self.k,self.k]))
@@ -60,7 +92,9 @@ class Alita_DeepFM(BaseEstimator):
         print("Model Inited. Prediction Layer: LR %s; FM %s; MLP %s" % (use_LR,use_FM,use_MLP))
 
     def _init_session(self):
-        return tf.Session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        return tf.Session(config=config)
 
     def LR(self,ids,w,b):
         #ids:(None,field)  w:(num_features,1)  out:(None,field,1)
@@ -133,6 +167,74 @@ class Alita_DeepFM(BaseEstimator):
         h2=self.activation(tf.matmul(h1,NFM_weights['W2'])+NFM_weights['b2'])
         return tf.matmul(h2,NFM_weights['Wout'])+NFM_weights['bout']
 
+
+    #直接用矩阵乘法把(None,c,k)->(None,k)->(None,1)
+    def SAFM(self,embedding,AFM_weights):
+        cross_term=[]
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！！不压缩成(None,1)
+        cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
+        #print("AFM_weights['downsample_W']",AFM_weights['downsample_W'].shape)
+        out=tf.tensordot(cross_term,AFM_weights['downsample_W'],axes=[[1],[0]])#(None,c,k)*(c,1)=(None,k,1)
+        out=tf.reduce_sum(out,axis=2)#Dim Reduce@2. Get (None,k)
+        return tf.matmul(out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
+
+    #convolution based FM  (None,c,k)->(None,c*k)->(None,1)
+    def CFM(self,embedding,AFM_weights):
+        cross_term=[]
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！！不压缩成(None,1)
+        cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
+        #imp1 matmul style
+        #cross_term=tf.reshape(cross_term,shape=[-1,self.c*self.k])
+        #out=tf.matmul(cross_term,AFM_weights['conv_W'])#(None,ck)*(ck,1)=(None,1)
+        #return out
+
+        #imp2 conv2d style: tune self.oup=1 is best.
+        #cross_term = tf.reshape(cross_term, shape=[-1, self.c,self.k,1])
+        cross_term = tf.expand_dims(cross_term,axis=-1)
+        out=tf.nn.conv2d(cross_term,AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
+        out=tf.reshape(out,shape=[-1,self.oup])#(N,1,1,oup)->(None,oup)
+        return out if self.oup==1 else tf.matmul(out,AFM_weights['proj'])
+
+    def CNFM(self, embedding, AFM_weights):
+        cross_term=[]
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                if (i,j) in self.FM_ignore_interaction:
+                    continue
+                cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！不压缩成(None,1)
+
+        cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num
+        out0=tf.nn.conv2d(tf.expand_dims(cross_term, axis=-1),AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
+        #out0=tf.matmul(tf.reshape(out0,shape=[-1,self.oup]),AFM_weights['proj'])#(N,1,1,oup)->(None,oup) 再*(oup,1) = None,1
+        out0=tf.reshape(out0,shape=[-1,1])
+
+        h1=tf.transpose(tf.nn.relu(tf.tensordot(cross_term,AFM_weights['h1_W'],axes=[[1],[0]])+AFM_weights['h1_b']),perm=[0,2,1]) #(N,c,k)*(c,h1)=(N,k,h1)  -> (N,h1,k)
+        out1 = tf.nn.conv2d(tf.expand_dims(h1, axis=-1), AFM_weights['filter_h1'], strides=[1, 1, 1, 1], padding='VALID')
+        out1=tf.reshape(out1,shape=[-1,1])
+
+        h2=tf.transpose(tf.nn.relu(tf.tensordot(h1,AFM_weights['h2_W'],axes=[[1],[0]])+AFM_weights['h2_b']),perm=[0,2,1]) #(N,h1,k)*(h1,h2)=(N,k,h2) transpose N,h2,k
+        out2 = tf.nn.conv2d(tf.expand_dims(h2, axis=-1), AFM_weights['filter_h2'], strides=[1, 1, 1, 1], padding='VALID')
+        out2 = tf.reshape(out2, shape=[-1, 1])
+
+        h3=tf.transpose(tf.nn.relu(tf.tensordot(h2,AFM_weights['out_W'],axes=[[1],[0]])+AFM_weights['out_b']),perm=[0,2,1]) #(N,h2,k)*(h2,1)=(N,k,1) transpose N,1,k
+        out3 = tf.nn.conv2d(tf.expand_dims(h3, axis=-1), AFM_weights['filter_out'], strides=[1, 1, 1, 1], padding='VALID')
+        out3 = tf.reshape(out3, shape=[-1, 1])
+        return out0+out1+out2+out3 #(None,1)
+
+
+
+
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         for i,column in enumerate(ids_train.columns):
@@ -165,7 +267,7 @@ class Alita_DeepFM(BaseEstimator):
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
             print("use AFM")
-            self.pred+= self.AFM(self.embedding,self.AFM_weights)
+            self.pred+= self.CNFM(self.embedding,self.AFM_weights)
 
         if self.use_MLP:
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
