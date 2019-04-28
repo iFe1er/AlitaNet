@@ -96,9 +96,10 @@ class Alita_DeepFM(BaseEstimator):
         config.gpu_options.allow_growth = True
         return tf.Session(config=config)
 
+    #todo bug: 要keepdims 输出(None,1)而不是(None,)
     def LR(self,ids,w,b):
         #ids:(None,field)  w:(num_features,1)  out:(None,field,1)
-        return tf.reduce_sum(tf.reshape(tf.nn.embedding_lookup(w,ids),[-1,self.fields]),axis=1)+b
+        return tf.reduce_sum(tf.reshape(tf.nn.embedding_lookup(w,ids),[-1,self.fields]),axis=1,keepdims=True)+b
 
     def Embedding(self,ids,params):
         #params:self.embedding(sum_features_sizes,k)   ids:(None,fields)  out=shape(ids)+shape(params[1:])=(None,fields,k)
@@ -164,8 +165,8 @@ class Alita_DeepFM(BaseEstimator):
         sum_square=tf.reduce_sum(tf.square(embedding),axis=1)#(None,k)
         cross_term_vec=square_sum-sum_square#(None,k)
         h1=self.activation(tf.matmul(cross_term_vec,NFM_weights['W1'])+NFM_weights['b1'])
-        h2=self.activation(tf.matmul(h1,NFM_weights['W2'])+NFM_weights['b2'])
-        return tf.matmul(h2,NFM_weights['Wout'])+NFM_weights['bout']
+        #h2=self.activation(tf.matmul(h1,NFM_weights['W2'])+NFM_weights['b2'])
+        return tf.matmul(h1,NFM_weights['Wout'])+NFM_weights['bout']
 
 
     #直接用矩阵乘法把(None,c,k)->(None,k)->(None,1)
@@ -236,6 +237,7 @@ class Alita_DeepFM(BaseEstimator):
 
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
+        self.batch_size=batch_size
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         for i,column in enumerate(ids_train.columns):
             if i>=1:
@@ -253,8 +255,8 @@ class Alita_DeepFM(BaseEstimator):
 
         self.pred=0
         if self.use_LR:
+            #bug detected. LR didn't keepdims
             self.pred=self.LR(self.ids,self.w,self.b)
-
         #only one FM will be used.
         if self.use_NFM:
             print("use NFM")
@@ -262,12 +264,12 @@ class Alita_DeepFM(BaseEstimator):
         elif self.use_FM and not self.attention_FM:
             print("use FM")
             if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
-                self.pred+= self.FM2(self.embedding)
+                self.pred += self.FM2(self.embedding)
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use AFM")
-            self.pred+= self.CNFM(self.embedding,self.AFM_weights)
+            print("use CFM")
+            self.pred+= self.CFM(self.embedding,self.AFM_weights)
 
         if self.use_MLP:
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
@@ -300,12 +302,20 @@ class Alita_DeepFM(BaseEstimator):
                 train_loss+=l
             train_loss/=total_batches
 
-            test_loss=0.
+            #todo movielens afm rounded
+            test_loss=0.;self.y_preds=[]
             for bx,by in batcher(ids_test,y_test,batch_size):
                 test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
+                self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by}))
             test_loss/=int(ids_test.shape[0]/batch_size)
 
-            print("epoch:%s train_loss:%s test_loss:%s" %(epoch+1,train_loss,test_loss))
+            y_pred=np.concatenate(self.y_preds, axis=0).reshape((-1))
+            predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
+            predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
+            # override test_loss
+            test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape)- predictions_bounded)))
+
+            print("epoch:%s train_loss:%s test_loss(rounded):%s" %(epoch+1,train_loss,test_loss))
             #print("self.pred=",self.sess.run(self.pred,feed_dict={self.ids:ids_test,self.y:y_test}))
             #print("self.y=",y_test)
             if test_loss<cur_min_loss:
@@ -328,8 +338,13 @@ class Alita_DeepFM(BaseEstimator):
         for i,column in enumerate(ids_pred.columns):
             if i>=1:
                 ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
-        self.output=self.sess.run(self.pred,feed_dict={self.ids: ids_pred,})
+        outputs = []
+        for bx in batcher(ids_pred,batch_size=self.batch_size): #y=None
+            outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx}))
+        self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
         return self.output
+
+
 
     def get_attention_mask(self):
         if not self.attention_FM:

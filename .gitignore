@@ -1,3 +1,4 @@
 code/__pycache__/*
 .idea/
 data/movie_lens_20m/*
+data/movie_lens_afm/*

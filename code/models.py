@@ -9,7 +9,7 @@ class LR():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 
 class FM():
@@ -20,7 +20,7 @@ class FM():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 class AFM():
     def __init__(self,features_sizes,loss_type='rmse',k=10,FM_ignore_interaction=None,attention_FM=10):
@@ -30,7 +30,7 @@ class AFM():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 class NFM():
     def __init__(self,features_sizes,loss_type='rmse',k=10):
@@ -40,7 +40,7 @@ class NFM():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 class MLP():
     def __init__(self,features_sizes,loss_type='rmse',deep_layers=(256,256),activation=tf.nn.relu,k=10):
@@ -50,7 +50,7 @@ class MLP():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 
 class WideAndDeep():
@@ -61,7 +61,7 @@ class WideAndDeep():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 class FMAndDeep():
     def __init__(self,features_sizes,loss_type='rmse',deep_layers=(256,256),activation=tf.nn.relu,k=10,FM_ignore_interaction=None):
@@ -71,7 +71,7 @@ class FMAndDeep():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 class DeepFM():
     def __init__(self,features_sizes,loss_type='rmse',deep_layers=(256,256),activation=tf.nn.relu,k=10,FM_ignore_interaction=None):
@@ -81,7 +81,7 @@ class DeepFM():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
 
 
 class DeepAFM():
@@ -92,4 +92,4 @@ class DeepAFM():
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
 
     def predict(self, ids_pred):
-        self.model.predict(ids_pred)
+        return self.model.predict(ids_pred)
