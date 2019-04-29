@@ -53,37 +53,37 @@ y_train=train['y'].values.reshape((-1,1))
 y_test=test['y'].values.reshape((-1,1))
 y_valid=valid['y'].values.reshape((-1,1))
 
-lambdas=[0.5,1.0,2.0,4.0,8.0]
-for l in lambdas:
-    ls=[]
-    Rounds=5
-    for _ in range(Rounds):
-        #model = LR(features_sizes)
-        #model=FM(features_sizes,k=256)
-        #model=MLP(features_sizes,deep_layers=(256,256),k=256)
-        #model = DeepFM(features_sizes, deep_layers=(256, 256), k=256)
-        #model = NFM(features_sizes, k=256)
-        #model = AFM(features_sizes,k=256,attention_FM=256)
-        model = AFM(features_sizes, k=256, attention_FM=8,dropout_keeprate=0.9,lambda_l2=l)
-
-        print(model)
-        valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
-        y_pred=model.predict(test[features]).reshape((-1))
-        predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
-        predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
-        # override test_loss
-        test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape) - predictions_bounded)))
-        print("Protocol Test Score:",test_loss)
-        ls.append(test_loss)
-
-        if _ != Rounds-1:
-            model.model.sess.close()
-            del model
+#lambdas=[0.01,0.1,0.5,1.0,2.0]
+#for l in lambdas:
+ls=[]
+Rounds=5
+for _ in range(Rounds):
+    #model = LR(features_sizes)
+    #model=FM(features_sizes,k=256)
+    #model=MLP(features_sizes,deep_layers=(256,256),k=256)
+    #model = DeepFM(features_sizes, deep_layers=(256, 256), k=256)
+    #model = NFM(features_sizes, k=256)
+    #model = AFM(features_sizes,k=256,attention_FM=256)
+    model = AFM(features_sizes, k=256, attention_FM=8,dropout_keeprate=0.9,lambda_l2=0.001)
 
     print(model)
-    print('lambdaL2=',l," Protocol Test Result : \n%.4f %.4f %s" % (pd.Series(ls).mean(),pd.Series(ls).min(),str(ls)))
-    model.model.sess.close()
-    del model
+    valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
+    y_pred=model.predict(test[features]).reshape((-1))
+    predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
+    predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
+    # override test_loss
+    test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape) - predictions_bounded)))
+    print("Protocol Test Score:",test_loss)
+    ls.append(test_loss)
+
+    if _ != Rounds-1:
+        model.model.sess.close()
+print(model)
+#    print('lambdaL2=',l)
+print(" Protocol Test Result : \n%.4f %.4f %s" % (pd.Series(ls).mean(),pd.Series(ls).min(),str(ls)))
+#    model.model.sess.close()
+#    del model
+del model
 
 '''
     

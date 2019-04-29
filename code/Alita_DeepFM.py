@@ -97,6 +97,7 @@ class Alita_DeepFM(BaseEstimator):
     def _init_session(self):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
+        #config.gpu_options.per_process_gpu_memory_fraction = 0.7
         return tf.Session(config=config)
 
     #todo bug: 要keepdims 输出(None,1)而不是(None,)
@@ -199,6 +200,7 @@ class Alita_DeepFM(BaseEstimator):
                     continue
                 cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！！不压缩成(None,1)
         cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
+        cross_term = tf.nn.dropout(cross_term, keep_prob=self.dropout_keeprate)
         #imp1 matmul style
         #cross_term=tf.reshape(cross_term,shape=[-1,self.c*self.k])
         #out=tf.matmul(cross_term,AFM_weights['conv_W'])#(None,ck)*(ck,1)=(None,1)
@@ -273,8 +275,8 @@ class Alita_DeepFM(BaseEstimator):
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use AFM")
-            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
+            print("use CFM")
+            afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
             self.pred+=afm_out
             self.L2_reg+=reg
 
