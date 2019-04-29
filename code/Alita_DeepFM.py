@@ -5,7 +5,7 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,dropout_keeprate=1.0,lambda_l2=0.0):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes)
@@ -19,6 +19,9 @@ class Alita_DeepFM(BaseEstimator):
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
         self.use_NFM=use_NFM
+
+        self.dropout_keeprate=dropout_keeprate
+        self.lambda_l2=lambda_l2
 
         self.c=0#cross terms
         for i in range(self.fields):
@@ -158,7 +161,9 @@ class Alita_DeepFM(BaseEstimator):
         self.normalize_att_score=tf.nn.softmax(att_score)#(None,c,1)
         attention_out=cross_term*self.normalize_att_score#(None,c,k)*(None,c,1)=(None,c,k)
         attention_out=tf.reduce_sum(attention_out,axis=1)#Sum pooling on cross terms. Get (None,k)
-        return tf.matmul(attention_out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
+        attention_out=tf.nn.dropout(attention_out, keep_prob=self.dropout_keeprate)
+        return tf.matmul(attention_out,AFM_weights['projection_p']),tf.nn.l2_loss(AFM_weights['attention_W'])#(None,k)*(k,1)=(None,1)
+        #with l2 reg
 
     def NFM(self,embedding,NFM_weights):
         square_sum=tf.square(tf.reduce_sum(embedding,axis=1))#(None,k)
@@ -204,7 +209,7 @@ class Alita_DeepFM(BaseEstimator):
         cross_term = tf.expand_dims(cross_term,axis=-1)
         out=tf.nn.conv2d(cross_term,AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
         out=tf.reshape(out,shape=[-1,self.oup])#(N,1,1,oup)->(None,oup)
-        return out if self.oup==1 else tf.matmul(out,AFM_weights['proj'])
+        return (out,tf.nn.l2_loss(AFM_weights['filter']) ) if self.oup==1 else (tf.matmul(out,AFM_weights['proj']),tf.nn.l2_loss(AFM_weights['filter']))
 
     def CNFM(self, embedding, AFM_weights):
         cross_term=[]
@@ -249,11 +254,11 @@ class Alita_DeepFM(BaseEstimator):
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
         self.y=tf.placeholder(tf.float32,[None,1])
 
-
+        self.dropout_keeprate_holder=tf.placeholder(tf.float32)
         if self.use_FM or self.use_MLP:
             self.embedding=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
 
-        self.pred=0
+        self.pred=0;self.L2_reg=0
         if self.use_LR:
             #bug detected. LR didn't keepdims
             self.pred=self.LR(self.ids,self.w,self.b)
@@ -268,8 +273,10 @@ class Alita_DeepFM(BaseEstimator):
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use CFM")
-            self.pred+= self.CFM(self.embedding,self.AFM_weights)
+            print("use AFM")
+            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
+            self.pred+=afm_out
+            self.L2_reg+=reg
 
         if self.use_MLP:
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
@@ -287,6 +294,8 @@ class Alita_DeepFM(BaseEstimator):
         else:
             raise Exception("Loss type %s not supported"%self.loss_type)
 
+        self.loss += self.lambda_l2*self.L2_reg
+
         self.optimizer=tf.train.AdamOptimizer(lr).minimize(self.loss)
         self.sess=self._init_session()
         self.sess.run(tf.global_variables_initializer())
@@ -298,7 +307,7 @@ class Alita_DeepFM(BaseEstimator):
             train_loss=0.
             total_batches=int(ids_train.shape[0]/batch_size)
             for bx,by in batcher(ids_train,y_train,batch_size):
-                _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by})
+                _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:self.dropout_keeprate})
                 train_loss+=l
             train_loss/=total_batches
 
@@ -306,7 +315,7 @@ class Alita_DeepFM(BaseEstimator):
             test_loss=0.;self.y_preds=[]
             for bx,by in batcher(ids_test,y_test,batch_size):
                 test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
-                self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by}))
+                self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0}))
             test_loss/=int(ids_test.shape[0]/batch_size)
 
             y_pred=np.concatenate(self.y_preds, axis=0).reshape((-1))
@@ -340,7 +349,7 @@ class Alita_DeepFM(BaseEstimator):
                 ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
         outputs = []
         for bx in batcher(ids_pred,batch_size=self.batch_size): #y=None
-            outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx}))
+            outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dropout_keeprate_holder:1.0}))
         self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
         return self.output
 
@@ -351,7 +360,7 @@ class Alita_DeepFM(BaseEstimator):
             return
         self.attention_masks=[]
         for bx, by in batcher(self.ids_test,self.y_test, 500):
-            self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by}))
+            self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
         return np.array(self.attention_masks)
 
 if __name__ == '__main__':
