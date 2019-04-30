@@ -60,14 +60,15 @@ Rounds=5
 for _ in range(Rounds):
     #model = LR(features_sizes)
     #model=FM(features_sizes,k=256)
-    #model=MLP(features_sizes,deep_layers=(256,256),k=256)
+    model=MLP(features_sizes,deep_layers=(256,256),k=256) #小batch=1024 LR不用小.同1e-3
     #model = DeepFM(features_sizes, deep_layers=(256, 256), k=256)
     #model = NFM(features_sizes, k=256)
     #model = AFM(features_sizes,k=256,attention_FM=256)
-    model = AFM(features_sizes, k=256, attention_FM=8,dropout_keeprate=0.9,lambda_l2=0.001)
+    #model = AFM(features_sizes, k=256, attention_FM=8,dropout_keeprate=0.9,lambda_l2=0.001)
+    #model = MLP(features_sizes, deep_layers=(1,), k=256)
+    valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=1024,early_stopping_rounds=15) #MLP     #SqueezeEmbLR's reducesum lr=0.01 MLP 0.0001
 
-    print(model)
-    valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
+    #valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
     y_pred=model.predict(test[features]).reshape((-1))
     predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
     predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
@@ -78,12 +79,13 @@ for _ in range(Rounds):
 
     if _ != Rounds-1:
         model.model.sess.close()
+        del model
 print(model)
 #    print('lambdaL2=',l)
 print(" Protocol Test Result : \n%.4f %.4f %s" % (pd.Series(ls).mean(),pd.Series(ls).min(),str(ls)))
 #    model.model.sess.close()
 #    del model
-del model
+
 
 '''
     

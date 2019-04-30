@@ -37,7 +37,7 @@ model=LR(features_sizes,loss_type='binary')
 #model=FM(features_sizes,k=10)
 # model=MLP(features_sizes,deep_layers=(16,16),k=16)
 print(model)
-best_score = model.fit(X_train, X_test, y_train, y_test, lr=0.001, N_EPOCH=50, batch_size=500,early_stopping_rounds=3)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train, X_test, y_train, y_test, lr=0.0002, N_EPOCH=50, batch_size=500,early_stopping_rounds=3)#0.0005->0.001(1e-3 bs=1000)
 
 
 model = AFM(features_sizes,k=40)

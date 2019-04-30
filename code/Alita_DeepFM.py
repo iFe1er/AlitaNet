@@ -102,8 +102,8 @@ class Alita_DeepFM(BaseEstimator):
 
     #todo bug: 要keepdims 输出(None,1)而不是(None,)
     def LR(self,ids,w,b):
-        #ids:(None,field)  w:(num_features,1)  out:(None,field,1)
-        return tf.reduce_sum(tf.reshape(tf.nn.embedding_lookup(w,ids),[-1,self.fields]),axis=1,keepdims=True)+b
+        #ids:(None,field)  w:(num_features,1)  out:(None,field,1) ->reshape(N,f)
+        return tf.reduce_sum(tf.reshape(tf.nn.embedding_lookup(w,ids),[-1,self.fields]),axis=1,keepdims=True)+b #(N,1)
 
     def Embedding(self,ids,params):
         #params:self.embedding(sum_features_sizes,k)   ids:(None,fields)  out=shape(ids)+shape(params[1:])=(None,fields,k)
@@ -283,6 +283,7 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_MLP:
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)
+            #self.pred=self.SqueezeEmbLR(self.embedding,self.SqueezeEmb_LRWeight)
         assert self.pred is not None,"must have one predicion layer"
 
 
