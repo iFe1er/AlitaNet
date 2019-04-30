@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM,AutoInt
 
 #data:作者论文 https://github.com/hexiangnan/attentional_factorization_machine
 
@@ -60,19 +60,19 @@ Rounds=5
 for _ in range(Rounds):
     #model = LR(features_sizes)
     #model=FM(features_sizes,k=256)
-    model=MLP(features_sizes,deep_layers=(256,256),k=256) #小batch=1024 LR不用小.同1e-3
+    #model=MLP(features_sizes,deep_layers=(256,256),k=256) #小batch=1024 LR不用小.同1e-3 valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=1024,early_stopping_rounds=15)
     #model = DeepFM(features_sizes, deep_layers=(256, 256), k=256)
     #model = NFM(features_sizes, k=256)
     #model = AFM(features_sizes,k=256,attention_FM=256)
     #model = AFM(features_sizes, k=256, attention_FM=8,dropout_keeprate=0.9,lambda_l2=0.001)
     #model = MLP(features_sizes, deep_layers=(1,), k=256)
-    valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=1024,early_stopping_rounds=15) #MLP     #SqueezeEmbLR's reducesum lr=0.01 MLP 0.0001
 
-    #valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
+
+    model=AutoInt(features_sizes,k=8)
+    valid_score=model.fit(train[features],valid[features],y_train,y_valid,lr=0.001,N_EPOCH=100,batch_size=4096,early_stopping_rounds=15)
     y_pred=model.predict(test[features]).reshape((-1))
     predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
     predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
-    # override test_loss
     test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape) - predictions_bounded)))
     print("Protocol Test Score:",test_loss)
     ls.append(test_loss)
@@ -94,3 +94,5 @@ print(" Protocol Test Result : \n%.4f %.4f %s" % (pd.Series(ls).mean(),pd.Series
     # override test_loss
     test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape) - predictions_bounded)))
 '''
+
+# MLP     #SqueezeEmbLR's reducesum lr=0.01
