@@ -291,7 +291,7 @@ class Alita_DeepFM(BaseEstimator):
             self.loss = tf.sqrt(tf.reduce_mean(tf.square(self.y - self.pred)))
         elif self.loss_type=='mse':
             self.loss = tf.reduce_mean(tf.square(self.y-self.pred))
-        elif self.loss_type=='binary_crossentropy':
+        elif self.loss_type in ['binary_crossentropy','binary','logloss']:
             self.loss=tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.y,logits=self.pred))
         else:
             raise Exception("Loss type %s not supported"%self.loss_type)
@@ -314,19 +314,19 @@ class Alita_DeepFM(BaseEstimator):
             train_loss/=total_batches
 
             #todo movielens afm rounded
-            test_loss=0.;self.y_preds=[]
+            test_loss=0.#;self.y_preds=[]
             for bx,by in batcher(ids_test,y_test,batch_size):
                 test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
-                self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0}))
+                #self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0}))
             test_loss/=int(ids_test.shape[0]/batch_size)
-
+            '''
             y_pred=np.concatenate(self.y_preds, axis=0).reshape((-1))
             predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
             predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
             # override test_loss
             test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape)- predictions_bounded)))
-
-            print("epoch:%s train_loss:%s test_loss(rounded):%s" %(epoch+1,train_loss,test_loss))
+            '''
+            print("epoch:%s train_loss:%s test_loss:%s" %(epoch+1,train_loss,test_loss))
             #print("self.pred=",self.sess.run(self.pred,feed_dict={self.ids:ids_test,self.y:y_test}))
             #print("self.y=",y_test)
             if test_loss<cur_min_loss:
