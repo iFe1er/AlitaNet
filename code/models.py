@@ -2,8 +2,8 @@ from Alita_DeepFM import Alita_DeepFM
 import tensorflow as tf
 
 class LR():
-    def __init__(self,features_sizes,loss_type='rmse'):
-        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,use_LR=True,use_FM=False,use_MLP=False)
+    def __init__(self,features_sizes,loss_type='rmse',hash_size=None):
+        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,use_LR=True,use_FM=False,use_MLP=False,hash_size=hash_size)
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
@@ -13,8 +13,8 @@ class LR():
 
 
 class FM():
-    def __init__(self,features_sizes,loss_type='rmse',k=10,FM_ignore_interaction=None,dropout_keeprate=1.0):
-        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,k=k,use_LR=True,use_FM=True,use_MLP=False,FM_ignore_interaction=FM_ignore_interaction,dropout_keeprate=dropout_keeprate)
+    def __init__(self,features_sizes,loss_type='rmse',k=10,FM_ignore_interaction=None,dropout_keeprate=1.0,hash_size=None):
+        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,k=k,use_LR=True,use_FM=True,use_MLP=False,FM_ignore_interaction=FM_ignore_interaction,dropout_keeprate=dropout_keeprate,hash_size=hash_size)
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)

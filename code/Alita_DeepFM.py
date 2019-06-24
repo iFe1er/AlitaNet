@@ -5,10 +5,11 @@ from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,dropout_keeprate=1.0,lambda_l2=0.0):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
-        self.num_features=sum(features_sizes)
+        self.num_features=sum(features_sizes) if hash_size is None else hash_size
+        self.hash_size=hash_size
         self.loss_type=loss_type
         self.deep_layers=deep_layers
         self.activation=activation
@@ -272,10 +273,11 @@ class Alita_DeepFM(BaseEstimator):
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
         self.batch_size=batch_size
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
-        for i,column in enumerate(ids_train.columns):
-            if i>=1:
-                ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
-                ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
+        if self.hash_size is None:
+            for i,column in enumerate(ids_train.columns):
+                if i>=1:
+                    ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
+                    ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
         if self.attention_FM:#储存为classs变量并用在get_attention里获取attention
             self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
 
@@ -341,14 +343,14 @@ class Alita_DeepFM(BaseEstimator):
         for epoch in range(N_EPOCH):
             train_loss=0.
             total_batches=int(ids_train.shape[0]/batch_size)
-            for bx,by in batcher(ids_train,y_train,batch_size):
+            for bx,by in batcher(ids_train,y_train,batch_size,self.hash_size):
                 _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:self.dropout_keeprate})
                 train_loss+=l
             train_loss/=total_batches
 
             #todo movielens afm rounded
             test_loss=0.#;self.y_preds=[]
-            for bx,by in batcher(ids_test,y_test,batch_size):
+            for bx,by in batcher(ids_test,y_test,batch_size,self.hash_size):
                 test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
                 #self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0}))
             test_loss/=int(ids_test.shape[0]/batch_size)
@@ -379,11 +381,12 @@ class Alita_DeepFM(BaseEstimator):
 
 
     def predict(self,ids_pred):
-        for i,column in enumerate(ids_pred.columns):
-            if i>=1:
-                ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
+        if self.hash_size is None:
+            for i,column in enumerate(ids_pred.columns):
+                if i>=1:
+                    ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
         outputs = []
-        for bx in batcher(ids_pred,batch_size=self.batch_size): #y=None
+        for bx in batcher(ids_pred,batch_size=self.batch_size,hash_size=self.hash_size): #y=None
             outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dropout_keeprate_holder:1.0}))
         self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
         return self.output
@@ -394,7 +397,7 @@ class Alita_DeepFM(BaseEstimator):
         if not self.attention_FM:
             return
         self.attention_masks=[]
-        for bx, by in batcher(self.ids_test,self.y_test, 500):
+        for bx, by in batcher(self.ids_test,self.y_test, 500,hash_size=self.hash_size):
             self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
         return np.array(self.attention_masks)
 

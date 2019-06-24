@@ -1,15 +1,25 @@
-def batcher(X_, y_=None, batch_size=-1):
+import numpy as np
+
+def batcher(X_, y_=None, batch_size=-1,hash_size=None):
     n_samples = X_.shape[0]
     if batch_size == -1:
         batch_size = n_samples
     if batch_size < 1:
        raise ValueError('Parameter batch_size={} is unsupported'.format(batch_size))
+    if hash_size is not None:
+        X_hash=list(X_.values)
+        for b in X_hash:
+            for i in range(len(b)):
+                b[i]=abs(hash('key_'+str(i)+'_value_'+str(b[i])))%hash_size
+        X_=np.array(X_hash)
+        #print(X_)
+        #print(y_) if y_ is not None else print(None)
     for i in range(0, n_samples, batch_size):
         upper_bound = min(i + batch_size, n_samples)
         ret_x = X_[i:upper_bound]
         ret_y = None
         if y_ is not None:
-            ret_y = y_[i:i + batch_size]
+            ret_y = y_[i:upper_bound]
             yield (ret_x, ret_y)
         else:
             yield ret_x
