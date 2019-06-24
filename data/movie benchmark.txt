@@ -212,3 +212,5 @@ movie lens AFM: rounded_rmse K=256,lr=0.0002,N_EPOCH=100,batch_size=1024,early_s
 
 avazu
 LR: 0.3902 @ epoch 2 #0.0005->0.001(1e-3 bs=1000)
+
+['device_id', 'site_id']: Best Score: 0.41213182015337585  @ 15  bs=6000 lr=0.001
