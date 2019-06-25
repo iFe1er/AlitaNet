@@ -391,7 +391,12 @@ class Alita_DeepFM(BaseEstimator):
         self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
         return self.output
 
-
+    def __del__(self):
+        try:
+            if self.sess is not None:
+                self.sess.close()
+        except:
+            pass
 
     def get_attention_mask(self):
         if not self.attention_FM:
