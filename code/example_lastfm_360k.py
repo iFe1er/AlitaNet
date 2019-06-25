@@ -42,16 +42,16 @@ y_test=y_test.values.reshape((-1,1))
 
 #model=LR(features_sizes,loss_type='rmse')#,hash_size=r)
 #model=FM(features_sizes,k=24)
-#model=MLP(features_sizes,deep_layers=(96,48),k=24)
-model=FM(features_sizes,k=24,FM_ignore_interaction=[(0,2),(0,3),(0,4)])
-print(model)
-best_score = model.fit(X_train, X_test, y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=5000,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+#model=MLP(features_sizes,deep_layers=(12,12),k=24) best(12,12) k=24
+#model=FM(features_sizes,k=24,FM_ignore_interaction=[(0,2),(0,3),(0,4)])
+#model=DeepFM(features_sizes,deep_layers=(12,12),k=24)
 
-'''
 ls=[]
-Rounds=3
+Rounds=1
 for _ in range(Rounds):
+    model = NFM(features_sizes, k=24)
+    print(model)
+    best_score = model.fit(X_train, X_test, y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=5000,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
     ls.append(best_score)
 print(model)
 print(" Protocol Test Result : \n%.4f %.4f %s" % (pd.Series(ls).mean(),pd.Series(ls).min(),str([round(i,4) for i in ls])))
-'''
