@@ -94,7 +94,10 @@ sample_intersec_people=len(train_msno&sample_data_msno)#28576
 np.random.seed(42)
 #测试占比20% ，新用户再占20%  1230个新用户
 test_msno=np.random.choice(train['msno'].unique(),int(train['msno'].nunique()*0.2*0.2))
+test_song=np.random.choice(train['song_id'].unique(),int(train['msno'].nunique()*0.2*0.36))
 
-test_data_new=data[data['msno'].isin(test_msno)]#279964=28W
-test_data_old=data[~data['msno'].isin(test_msno)].sample(int(data.shape[0]*0.2*0.8),random_state=42)#1180386
-test_data=pd.concat([test_data_new,test_data_old],axis=0)#1460350
+test_data_new_msno=data[data['msno'].isin(test_msno)]#279964
+test_data_new_song=data[data['song_id'].isin(test_song)]#33588
+
+test_data_old=data[(~data['msno'].isin(test_msno))&(~data['song_id'].isin(test_song))].sample(frac=0.16,random_state=42)#1130421
+test_data=pd.concat([test_data_new_msno,test_data_new_song,test_data_old],axis=0)#1443973
