@@ -276,10 +276,6 @@ class Alita_DeepFM(BaseEstimator):
 
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
-        #[bug fix]mutable prevention 19/06/27
-        ids_train=ids_train.copy()
-        ids_test=ids_test.copy()
-
         self.batch_size=batch_size
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         if self.hash_size is None:
@@ -287,7 +283,7 @@ class Alita_DeepFM(BaseEstimator):
                 if i>=1:
                     ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
                     ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
-        if self.attention_FM:#储存为classs变量并用在get_attention里获取attention
+        if True:#self.attention_FM:#储存为classs变量并用在get_attention里获取attention
             self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
 
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
@@ -345,12 +341,11 @@ class Alita_DeepFM(BaseEstimator):
         if self.metric_type is not None:
             assert self.metric_type=='auc'
             assert self.loss_type in ['binary_crossentropy', 'binary', 'logloss']
-            #tf.auc mode: remove sklearn auc part
             #self.loss=tf.metrics.auc(labels=self.y,predictions=tf.nn.sigmoid(self.pred))
 
         self.sess=self._init_session()
         self.sess.run(tf.global_variables_initializer())
-        self.sess.run(tf.local_variables_initializer())
+        #self.sess.run(tf.local_variables_initializer())
 
         cur_best_rounds=0
 
@@ -382,7 +377,7 @@ class Alita_DeepFM(BaseEstimator):
             # override test_loss
             test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape)- predictions_bounded)))
             '''
-            #sklearn auc mode
+
             if self.metric_type:# override test_loss
                 self.y_pred_train=np.concatenate(y_preds_train,axis=0)
                 self.y_pred = np.concatenate(y_preds, axis=0)
@@ -395,6 +390,7 @@ class Alita_DeepFM(BaseEstimator):
             #print("self.y=",y_test)
 
             if isBetter(test_loss,cur_min_loss,is_greater_better):
+                print("better")
                 cur_min_loss=test_loss
                 cur_best_rounds=epoch+1
                 best_weights = {v.name: v.eval(self.sess) for v in tf.trainable_variables()}
@@ -406,17 +402,15 @@ class Alita_DeepFM(BaseEstimator):
                 return best_score
 
             #auc reset op
-            self.sess.run(tf.local_variables_initializer())
+            #self.sess.run(tf.local_variables_initializer())
 
         self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
         best_score=cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,})
-        print("[Epoch Maxi]Best Score:", best_score,' at round ',cur_best_rounds)
+        print("Best Score:", best_score,' at round ',cur_best_rounds)
         return best_score
 
 
     def predict(self,ids_pred):
-        # [bug fix]mutable prevention 19/06/27
-        ids_pred=ids_pred.copy()
         if self.hash_size is None:
             for i,column in enumerate(ids_pred.columns):
                 if i>=1:

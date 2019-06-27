@@ -26,6 +26,7 @@ if __name__=='__main__':
         train[c]=lbl.transform(list(train[c]))
         test[c]=lbl.transform(list(test[c]))
 
+    #[测试加速]：bs可上5000
     ls=[]
     for _ in range(5):
         #model=FM(features_sizes,k=16)#LR(features_sizes)

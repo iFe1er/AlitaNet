@@ -1,8 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from sklearn.base import BaseEstimator
-from sklearn.metrics import roc_auc_score
-from utils import batcher,isBetter
+from utils import batcher
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
@@ -12,7 +11,7 @@ class Alita_DeepFM(BaseEstimator):
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
         self.hash_size=hash_size
         self.loss_type=loss_type
-        self.metric_type=metric_type#only support AUC
+        self.metric_type = metric_type
         self.deep_layers=deep_layers
         self.activation=activation
         self.k=k #embedding size K
@@ -115,7 +114,7 @@ class Alita_DeepFM(BaseEstimator):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         #config.gpu_options.per_process_gpu_memory_fraction = 0.7
-        return tf.Session(config=config)
+        return tf.InteractiveSession(config=config)#tf.Session(config=config)
 
     #todo bug: 要keepdims 输出(None,1)而不是(None,)
     def LR(self,ids,w,b):
@@ -276,10 +275,6 @@ class Alita_DeepFM(BaseEstimator):
 
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
-        #[bug fix]mutable prevention 19/06/27
-        ids_train=ids_train.copy()
-        ids_test=ids_test.copy()
-
         self.batch_size=batch_size
         #data preprocess:对ids的每个features，label encoder都要从上一个的末尾开始。函数输入时则保证每个都从0起.
         if self.hash_size is None:
@@ -287,7 +282,7 @@ class Alita_DeepFM(BaseEstimator):
                 if i>=1:
                     ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
                     ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
-        if self.attention_FM:#储存为classs变量并用在get_attention里获取attention
+        if True:#储存为classs变量并用在get_attention里获取attention
             self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
 
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
@@ -330,6 +325,7 @@ class Alita_DeepFM(BaseEstimator):
         assert self.pred is not None,"must have one predicion layer"
 
 
+
         if self.loss_type=='rmse':
             self.loss = tf.sqrt(tf.reduce_mean(tf.square(self.y - self.pred)))
         elif self.loss_type=='mse':
@@ -339,96 +335,82 @@ class Alita_DeepFM(BaseEstimator):
         else:
             raise Exception("Loss type %s not supported"%self.loss_type)
 
-        self.loss += self.lambda_l2*self.L2_reg
+        #self.loss += self.lambda_l2*self.L2_reg
+
         self.optimizer=tf.train.AdamOptimizer(lr).minimize(self.loss)
-
-        if self.metric_type is not None:
-            assert self.metric_type=='auc'
-            assert self.loss_type in ['binary_crossentropy', 'binary', 'logloss']
-            #tf.auc mode: remove sklearn auc part
-            #self.loss=tf.metrics.auc(labels=self.y,predictions=tf.nn.sigmoid(self.pred))
-
         self.sess=self._init_session()
         self.sess.run(tf.global_variables_initializer())
-        self.sess.run(tf.local_variables_initializer())
 
         cur_best_rounds=0
-
-        is_greater_better = False if self.metric_type is None else True #默认Loss越小越好
-        cur_min_loss = 1e8 if not is_greater_better else -1e8
+        cur_min_loss=1e8
         best_weights = {v.name: v.eval(self.sess) for v in tf.trainable_variables()}
         for epoch in range(N_EPOCH):
-            train_loss=0.;y_preds_train=[]
+            train_loss=0.
             total_batches=int(ids_train.shape[0]/batch_size)
             for bx,by in batcher(ids_train,y_train,batch_size,self.hash_size):
                 _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:self.dropout_keeprate})
-                train_loss+=l #if not self.metric_type else l[1]
-                if self.metric_type:
-                    y_preds_train.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
+                train_loss+=l
             train_loss/=total_batches
 
             #todo movielens afm rounded
-            test_loss=0.;y_preds=[]
+            test_loss=0.#;self.y_preds=[]
             for bx,by in batcher(ids_test,y_test,batch_size,self.hash_size):
-                l=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
-                test_loss+=l #if not self.metric_type else l[1]
-                if self.metric_type:
-                    y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
+                test_loss+=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
+                #self.y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0}))
             test_loss/=int(ids_test.shape[0]/batch_size)
             '''
-            y_pred=np.concatenate(y_preds, axis=0).reshape((-1))
+            y_pred=np.concatenate(self.y_preds, axis=0).reshape((-1))
             predictions_bounded = np.maximum(y_pred, np.ones(len(y_pred)) * -1)  # bound the lower values
             predictions_bounded = np.minimum(predictions_bounded, np.ones(len(y_pred)) * 1)  # bound the higher values
             # override test_loss
             test_loss = np.sqrt(np.mean(np.square(y_test.reshape(predictions_bounded.shape)- predictions_bounded)))
             '''
-            #sklearn auc mode
-            if self.metric_type:# override test_loss
-                self.y_pred_train=np.concatenate(y_preds_train,axis=0)
-                self.y_pred = np.concatenate(y_preds, axis=0)
-                train_loss=roc_auc_score(y_train,self.y_pred_train)
-                test_loss = roc_auc_score(y_test,self.y_pred)
-
-            metrics_='loss' if self.metric_type is None else 'auc'
-            print("epoch:%s train_%s:%s test_%s:%s" %(epoch+1,metrics_,train_loss,metrics_,test_loss))
+            print("epoch:%s train_loss:%s test_loss:%s" %(epoch+1,train_loss,test_loss))
             #print("self.pred=",self.sess.run(self.pred,feed_dict={self.ids:ids_test,self.y:y_test}))
             #print("self.y=",y_test)
-
-            if isBetter(test_loss,cur_min_loss,is_greater_better):
+            if test_loss<cur_min_loss:
                 cur_min_loss=test_loss
                 cur_best_rounds=epoch+1
                 best_weights = {v.name: v.eval(self.sess) for v in tf.trainable_variables()}
             if epoch+1-cur_best_rounds>=early_stopping_rounds:
-                print("[Early Stop]Early Stopping because not improved for %s rounds" % early_stopping_rounds)
+                self.best_weights = best_weights
+                print("Early Stopping because not improved for %s rounds" % early_stopping_rounds)
                 self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
                 best_score = cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test, })
-                print("[Early Stop]Best Score:",best_score,' at round ',cur_best_rounds)
+                print("Best Score:",best_score,' at round ',cur_best_rounds)
                 return best_score
-
-            #auc reset op
-            self.sess.run(tf.local_variables_initializer())
-
+        self.best_weights=best_weights = {v.name: v.eval(self.sess) for v in tf.trainable_variables()}
+        print("Best weights",self.best_weights)
         self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
-        best_score=cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,})
-        print("[Epoch Maxi]Best Score:", best_score,' at round ',cur_best_rounds)
+        best_score=cur_min_loss
+        print("In Fit() loss",self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,}))
+        self.temp=self.sess.run(self.pred, feed_dict={self.ids: ids_test,self.dropout_keeprate_holder:1.0})
+        self.tempp = self.sess.run(self.pred, feed_dict={self.ids: ids_test, self.dropout_keeprate_holder: 1.0})
+        print("Best Score:", best_score,' at round ',cur_best_rounds)
         return best_score
 
 
     def predict(self,ids_pred):
-        # [bug fix]mutable prevention 19/06/27
-        ids_pred=ids_pred.copy()
-        if self.hash_size is None:
-            for i,column in enumerate(ids_pred.columns):
-                if i>=1:
-                    ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
+        for i,column in enumerate(ids_pred.columns):
+            if i>=1:
+                ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
+        print("In Predict()_start loss", self.sess.run(self.loss, feed_dict={self.ids: self.ids_test, self.y: self.y_test}))
+        print("Predict y_pred",self.sess.run(self.pred, feed_dict={self.ids: ids_pred,self.dropout_keeprate_holder:1.0}))
+        self.temp2 = self.sess.run(self.pred, feed_dict={self.ids: self.ids_test, self.dropout_keeprate_holder: 1.0})
+        print("In Predict() loss",self.sess.run(self.loss,feed_dict={self.ids: self.ids_test,self.y:self.y_test}))
+        self.sess.run(tf.tuple([tf.assign(var, self.best_weights[var.name]) for var in tf.trainable_variables()]))
+        self.temp3 = self.sess.run(self.pred, feed_dict={self.ids: self.ids_test, self.dropout_keeprate_holder: 1.0})
+        self.temp4 = self.sess.run(self.pred, feed_dict={self.ids: self.ids_test})
+        print("In Predict() reload weights loss",self.sess.run(self.loss,feed_dict={self.ids: self.ids_test,self.y:self.y_test}))
+        return [self.sess.run(self.pred, feed_dict={self.ids: ids_pred,self.dropout_keeprate_holder:1.0}),self.sess.run(self.pred, feed_dict={self.ids: self.ids_test,self.dropout_keeprate_holder:1.0})]
         outputs = []
-        self.ids_pred=ids_pred
-        for bx in batcher(ids_pred,None,batch_size=self.batch_size,hash_size=self.hash_size): #y=None
+        for bx in batcher(ids_pred,batch_size=self.batch_size,hash_size=self.hash_size): #y=None
             outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dropout_keeprate_holder:1.0}))
         self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
         return self.output
 
     def __del__(self):
+        print("closing session")
         try:
             if self.sess is not None:
                 self.sess.close()

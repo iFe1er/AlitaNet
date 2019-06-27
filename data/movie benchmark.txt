@@ -244,4 +244,18 @@ NFM:    0.6886@50  default fmout-k-1 [train_loss:0.6707]
         0.6790@9   fmout-1  [train_loss:0.6604]
 
 
-[KKBOX's music recommendation]
+[KKBOX's music recommendation]--simulate work data
+<Valid Score>
+
+(old ver. using logloss metrics)
+train_features=['msno', 'song_id']
+                logloss        AUC      epoch       trainloss
+LR              0.6372        0.6972     13          0.5992
+FM(k=8)         0.5949        0.6061     22          0.5269
+
+
+(new ver. use sklearn auc instead of tf.metrics.auc for precision)
+train_features=['msno', 'song_id'] lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5
+                  AUC     epoch     trainAUC
+LR              0.7339     30        0.7619
+FM(k=8)         0.7569     22        0.8290

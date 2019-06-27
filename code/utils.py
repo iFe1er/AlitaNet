@@ -42,8 +42,8 @@ def list_batcher(Xs_, y_=None, batch_size=-1):
         else:
             yield ret_x
 
-def isBetter(a,b,is_better_greater=True):
-    if is_better_greater:
+def isBetter(a,b,is_greater_better=True):
+    if is_greater_better:
         return a>b
     else:
         return a<b
