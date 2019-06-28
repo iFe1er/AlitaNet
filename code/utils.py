@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 def batcher(X_, y_=None, batch_size=-1,hash_size=None):
     n_samples = X_.shape[0]
@@ -59,3 +60,39 @@ def FGE_scheduler(epoch,N_EPOCH=100,M=5):
     else:
         return (2-2*t)*alpha2+(2*t-1)*alpha2
 
+class ColdStartEncoder():
+    def __init__(self):
+        self.status='init'
+        self.encoding_dict=dict()
+
+    def fit(self,col):
+        if isinstance(col,pd.Series):
+            unique_values=col.unique()
+        elif isinstance(col,list):
+            unique_values=pd.Series(col).unique()
+        else:
+            raise Exception('Only Series and list supported')
+        #编码从1起步
+        self.encoding_dict={value:count for value,count in zip(unique_values,range(1,len(unique_values)+1))}
+        self.status = 'fitted'
+
+    def transform(self,col):
+        if self.status!='fitted':
+            raise Exception('must fit before transform')
+        return col.map(lambda x:self.encoding_dict.get(x)).fillna(0).astype(int).tolist()
+
+    def fit_transform(self,col):
+        self.fit(col)
+        return self.transform(col)
+
+'''
+#test speed 
+from datetime import datetime
+startTime = datetime.now()
+for i in range(100):#10
+    #_=X_train['song_id'].value_counts().index.tolist() #17.6s
+    #_=X_train['song_id'].unique().tolist()             #6.64s
+endTime = datetime.now()
+print('Cost:',endTime - startTime)
+
+'''

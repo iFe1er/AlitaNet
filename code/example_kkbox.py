@@ -75,7 +75,7 @@ test.loc[:,'gender'] =    test['gender'].fillna('unknown')            #
 test.loc[:,'genre_ids']=  test['genre_ids'].fillna('-1')              #465|458
 test.loc[:,'language']=   test['language'].fillna(-1).astype(int)     #52.0->52
 test.loc[:,'artist_name']=test['artist_name'].fillna('unknown')       #S.H.E
-test_data=test[features] #(2556790, 8)
+test_data=test[features] #(2556790, 8) test_data=test[train_features] 
 
 test_data[~test_data['msno'].isin(data['msno'].unique())].shape #(184018, 8)个新用户交互
 test_data[~test_data['msno'].isin(data['msno'].unique())]['msno'].nunique() #3648个新用户
@@ -127,21 +127,42 @@ target              2
 print("Data Prepared.")
 train_data=data.loc[data.index.difference(test_data.index),:]#5862501
 
+train_features=['msno','song_id','city','bd','gender']
+features_sizes=[1+train_data[c].nunique() for c in train_features]#todo: 需要+1留出冷启动id
+from utils import ColdStartEncoder
+encs=[]
+for c in train_features:
+    enc = ColdStartEncoder()#放里面 [BUG fix]
+    train_data[c] = enc.fit_transform(train_data[c])
+    encs.append(enc)
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(train_data[train_features], train_data['target'], test_size = 0.125, random_state = 42)
+y_train=y_train.values.reshape((-1,1))
+y_test=y_test.values.reshape((-1,1))
+
+'''
 train_features=['msno','song_id']
 features_sizes=[train_data[c].nunique() for c in train_features]
-
 from sklearn.preprocessing import LabelEncoder
 lbl = LabelEncoder()
+enc = ColdStartEncoder()
 for c in train_features:
     train_data[c]=lbl.fit_transform(list(train_data[c]))
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(train_data[train_features], train_data['target'], test_size = 0.125, random_state = 42)
 y_train=y_train.values.reshape((-1,1))
 y_test=y_test.values.reshape((-1,1))
+'''
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)])
+#model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
+#model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
+#model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
+model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
 best_score = model.fit(X_train[train_features], X_test[train_features], y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
@@ -150,3 +171,71 @@ y_pred=1./(1.+np.exp(-1.*y_pred))#sigmoid transform
 from sklearn.metrics import roc_auc_score,log_loss
 print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_test,y_pred))
 #print(log_loss(y_test,y_pred))
+
+test_data_=pd.concat([test_data_new_msno,test_data_new_song,test_data_old],axis=0).copy()
+for i,c in enumerate(train_features):
+    enc = encs[i]
+    test_data_[c] = enc.transform(test_data[c])
+y_pred_test=model.predict(test_data_[train_features])
+y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
+print("ROC-AUC score on test set: %.4f" %roc_auc_score(test_data_['target'],y_pred_test))
+
+
+SUBMIT=False
+if SUBMIT:
+    test=pd.read_csv(data_path+'test.csv')
+    test=test.merge(members,how='left',on='msno')
+    test=test.merge(songs,how='left',on='song_id')
+    test.loc[:,'gender'] =    test['gender'].fillna('unknown')            #
+    test.loc[:,'genre_ids']=  test['genre_ids'].fillna('-1')              #465|458
+    test.loc[:,'language']=   test['language'].fillna(-1).astype(int)     #52.0->52
+    test.loc[:,'artist_name']=test['artist_name'].fillna('unknown')       #S.H.E
+    test_data=test[train_features] #(2556790, 8)
+    test_data_=test_data.copy()
+    for i,c in enumerate(train_features):
+        enc = encs[i]
+        test_data_[c] = enc.transform(test_data[c])
+    y_pred_test=model.predict(test_data_[train_features])
+    y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
+    #submission online
+    sub=pd.read_csv(data_path+'sample_submission.csv')
+    sub['target']=y_pred_test
+    sub.to_csv(data_path+'sub/FM_F5_valid0.7344_test0.6867.csv',index=False)
+
+
+
+'''
+#  msno in test_data & not in train_data
+#  set(data['msno'])-(set(test_data['msno'].unique())&set(train_data['msno']))
+#  lFUV7lsihiFMPKb+C9EV9w2Y1NsKpgPArWl+Bm7BCCU=
+
+enc=ColdStartEncoder()
+enc.fit(train_data['msno'])
+tt=enc.transform(test_data['msno'])
+#print(tt[test_data['msno']=='lFUV7lsihiFMPKb+C9EV9w2Y1NsKpgPArWl+Bm7BCCU='])  #all zero
+'''
+
+
+
+'''
+import lightgbm as lgb
+train_Dataset = lgb.Dataset(X_train,label=y_train.reshape(-1))
+valid_Dataset = lgb.Dataset(X_test,label=y_test.reshape(-1))
+params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'boosting': 'gbdt',
+    'learning_rate': 0.1 ,
+    'verbose': 0,
+    'num_leaves': 31,
+    'bagging_fraction': 0.95,
+    'bagging_freq': 1,
+    'bagging_seed': 1,
+    'feature_fraction': 0.9,
+    'feature_fraction_seed': 1,
+    'max_bin': 128,
+    'max_depth': 10,
+    'num_rounds': 200,
+    }
+bst = lgb.train(params, train_Dataset, num_boost_round=200, valid_sets=valid_Dataset,early_stopping_rounds=10)#0.535
+'''

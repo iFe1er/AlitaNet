@@ -246,7 +246,6 @@ NFM:    0.6886@50  default fmout-k-1 [train_loss:0.6707]
 
 [KKBOX's music recommendation]--simulate work data
 <Valid Score>
-
 (old ver. using logloss metrics)
 train_features=['msno', 'song_id']
                 logloss        AUC      epoch       trainloss
@@ -254,8 +253,34 @@ LR              0.6372        0.6972     13          0.5992
 FM(k=8)         0.5949        0.6061     22          0.5269
 
 
-(new ver. use sklearn auc instead of tf.metrics.auc for precision)
+<sklearn real AUC> KKBOX's benchmark
+BUG1: 传.fit()传了完整df而不是copy，导致内部改变了外部数据,test时出错
+BUG2：ColdStartEncoder 多个列的时候发现test_AUC~0.5  看数据发现全是0
+(new ver. use sklearn auc instead of tf.metrics.auc for precision) [BUG 1&2 FIXED]
 train_features=['msno', 'song_id'] lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5
-                  AUC     epoch     trainAUC
-LR              0.7339     30        0.7619
-FM(k=8)         0.7569     22        0.8290
+             valid_AUC    epoch    test_AUC    train_AUC    Kaggle    params
+LR              0.7347     27       0.6876       0.7610     0.6229    valid 0.7339~0.7349
+FM(k=8)         0.7569     24       0.6777       0.8303     0.6110    test 0.6835 0.5712 0.5576           [bug前 0.7569+0.5823+K0.5711]
+MLP(k=8;(16,8)) 0.7330     4                     0.7684
+MLP(k=8;(16,8)) 0.7341     4                     0.7547               lr=0.0001
+MLP(k=8;(8,8))  0.7342     9        0.6774       0.7916     0.6118    lr=0.0001  改bs=1024是0.7347 same   [bug前 0.7348+0.5789+K0.5676]
+NFM(k=8,k->1)   0.7472     13                    0.8237               不如FM.
+WND(k=8,(8,8))  0.7334     2        0.6852       0.7498     0.6212    0.737~0.739 [RUN1 0.7341@6+0.6758+K?]    [bug前 0.7393+0.5819+K?]
+DFM(k=8,(8,8))  0.7397     4        0.5828       0.7693               0.7366+0.5828@2
+
+交互信息+用户侧信息 F5
+train_features=['msno','song_id','city','bd','gender'] lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5
+             valid_AUC    epoch    test_AUC    train_AUC    Kaggle    params
+LR              0.7351     25       0.6873       0.7603     0.6232
+FM(k=8)         0.7344     3        0.6867       0.7551     0.6232
+FMDE(k=8,0&234) 0.7295     24       0.6770       0.8291     0.6094
+MLP(k=8;(8,8))  0.7332     6        0.6832       0.7684
+NFM(k=8,k->1)   0.7343     2        0.6868       0.7500
+NFM(k=8,k-8-1)  0.7338     2        0.6858       -
+WND(k=8,(8,8))  0.7383     3        0.6768       0.7647
+DFM(k=8,(8,8))  0.7340     1        0.6875       0.7011     0.6219     run2:0.7340+0.6875+train0.7011
+AFM(k=8,t=8)    0.7351     2        0.6853       0.7484     0.6222
+CFM(k=8,t=8)    tbcont.
+a=pd.DataFrame([[0.6876,0.6229],[0.6777,0.6110],[0.6774,0.6118],[0.6852,0.6212],[0.6873,0.6232],[0.6867,0.6232],[0.6770,0.6094]])
+a.corr()#0.993582!
+a.plot()
