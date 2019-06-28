@@ -222,16 +222,15 @@ class Alita_DeepFM(BaseEstimator):
         cross_term=tf.stack(cross_term,axis=1)#(None,c,k)  c=cross term num. tf.stacke add new dim@1
         cross_term = tf.nn.dropout(cross_term, keep_prob=self.dropout_keeprate)
         #imp1 matmul style
-        #cross_term=tf.reshape(cross_term,shape=[-1,self.c*self.k])
-        #out=tf.matmul(cross_term,AFM_weights['conv_W'])#(None,ck)*(ck,1)=(None,1)
-        #return out
+        cross_term=tf.reshape(cross_term,shape=[-1,self.c*self.k])
+        out=tf.matmul(cross_term,AFM_weights['conv_W'])#(None,ck)*(ck,1)=(None,1)
+        return out,tf.nn.l2_loss(AFM_weights['filter'])
 
         #imp2 conv2d style: tune self.oup=1 is best.
-        #cross_term = tf.reshape(cross_term, shape=[-1, self.c,self.k,1])
-        cross_term = tf.expand_dims(cross_term,axis=-1)
-        out=tf.nn.conv2d(cross_term,AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
-        out=tf.reshape(out,shape=[-1,self.oup])#(N,1,1,oup)->(None,oup)
-        return (out,tf.nn.l2_loss(AFM_weights['filter']) ) if self.oup==1 else (tf.matmul(out,AFM_weights['proj']),tf.nn.l2_loss(AFM_weights['filter']))
+        #cross_term = tf.expand_dims(cross_term,axis=-1)
+        #out=tf.nn.conv2d(cross_term,AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
+        #out=tf.reshape(out,shape=[-1,self.oup])#(N,1,1,oup)->(None,oup)
+        #return (out,tf.nn.l2_loss(AFM_weights['filter']) ) if self.oup==1 else (tf.matmul(out,AFM_weights['proj']),tf.nn.l2_loss(AFM_weights['filter']))
 
     def CNFM(self, embedding, AFM_weights):
         cross_term=[]

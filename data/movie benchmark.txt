@@ -271,7 +271,7 @@ DFM(k=8,(8,8))  0.7397     4        0.5828       0.7693               0.7366+0.5
 交互信息+用户侧信息 F5
 train_features=['msno','song_id','city','bd','gender'] lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5
              valid_AUC    epoch    test_AUC    train_AUC    Kaggle    params
-LR              0.7351     25       0.6873       0.7603     0.6232
+LR              0.7351     25       0.6873       0.7603     0.6232    run2:0.7347+0.6880+train0.7610
 FM(k=8)         0.7344     3        0.6867       0.7551     0.6232
 FMDE(k=8,0&234) 0.7295     24       0.6770       0.8291     0.6094
 MLP(k=8;(8,8))  0.7332     6        0.6832       0.7684
@@ -280,7 +280,7 @@ NFM(k=8,k-8-1)  0.7338     2        0.6858       -
 WND(k=8,(8,8))  0.7383     3        0.6768       0.7647
 DFM(k=8,(8,8))  0.7340     1        0.6875       0.7011     0.6219     run2:0.7340+0.6875+train0.7011
 AFM(k=8,t=8)    0.7351     2        0.6853       0.7484     0.6222
-CFM(k=8,t=8)    tbcont.
+CFM(k=8,t=8)    0.7316     2        0.6852       0.7437                impl2CFM error:Could not create cudnn handle: CUDNN_STATUS_NOT_INITIALIZED
 a=pd.DataFrame([[0.6876,0.6229],[0.6777,0.6110],[0.6774,0.6118],[0.6852,0.6212],[0.6873,0.6232],[0.6867,0.6232],[0.6770,0.6094]])
 a.corr()#0.993582!
 a.plot()
