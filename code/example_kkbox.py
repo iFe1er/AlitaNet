@@ -165,7 +165,7 @@ y_test=y_test.values.reshape((-1,1))
 model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
-best_score = model.fit(X_train[train_features], X_test[train_features], y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train[train_features], X_test[train_features], y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=512,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 y_pred=model.predict(X_test)
 y_pred=1./(1.+np.exp(-1.*y_pred))#sigmoid transform
 from sklearn.metrics import roc_auc_score,log_loss
