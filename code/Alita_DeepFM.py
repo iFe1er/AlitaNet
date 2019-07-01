@@ -191,8 +191,8 @@ class Alita_DeepFM(BaseEstimator):
         #h2=self.activation(tf.matmul(h1,NFM_weights['W2'])+NFM_weights['b2'])
 
         #todo simple NFM use cross_term vec, else use h1
-        return tf.matmul(cross_term_vec,NFM_weights['Wout'])+NFM_weights['bout']
-        #return tf.matmul(h1, NFM_weights['Wout']) + NFM_weights['bout']
+        #return tf.matmul(cross_term_vec,NFM_weights['Wout'])+NFM_weights['bout']
+        return tf.matmul(h1, NFM_weights['Wout']) + NFM_weights['bout']
 
 
     #直接用矩阵乘法把(None,c,k)->(None,k)->(None,1)
