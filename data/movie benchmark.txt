@@ -297,8 +297,29 @@ MLP(k=8;(8,8))  0.7433     9       0.6968       0.8021
 MLP(k=8;(32,32  0.7394     7       0.6930       0.8072                [valid0.7408+test0.6912+train0.8192@8]
 NFM(k=8,k->1)   0.7373     2       0.6956       0.7528
 NFM(k=8,k-8-1)  0.7544     5       0.7074       0.7945      0.6231    NFM-K81_F8_valid0.7544_test0.7074.csv
+WND(k=8,(8,8))  0.7359     2       0.6937       0.7418
+DFM(k=8,(8,8))  0.7460     7       0.7001       0.7966      0.6197     valid0.7468+test0.6986+train0.8118@14+kaggle0.61707
+AFM(k=8,t=8)    0.7367     3       0.6970       0.7580      0.6265
+CFM(k=8,t=8)    0.7504     17      0.7010       0.8461      0.6103     valid0.7521_test0.7038_train0.8347@15+kaggle0.61416
+DAFM(kt=8,(8,8) 0.7500     10      0.6934       0.8105      0.6167
+
+交互+用户侧+歌曲侧+上下文 F11
+train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language','source_system_tab','source_screen_name','source_type']
+             valid_AUC    epoch    test_AUC    train_AUC    Kaggle    params
+LR              0.7652     24      0.7345       0.7858      0.6594
+FM(k=8)         0.7910     23      0.7511       0.8598      0.6492
+MLP(k=8;(8,8))  0.7770     5       0.7414       0.8082      0.6586
+MLP(k=8;(32,8   0.7849     7       0.7436       0.8430      0.6526
+NFM(k=8,k->1)   x
+NFM(k=8,k-8-1)  0.7911     9       0.7486       0.8516      0.6509    0.7908    12      0.7493       0.8614
 WND(k=8,(8,8))
 DFM(k=8,(8,8))
 AFM(k=8,t=8)
 CFM(k=8,t=8)
-CFM(sameimpl2)
+DAFM(kt=8,(8,8)
+
++notebook:
+import seaborn as sns
+sns.regplot(x='song_length',y='target',data=train[['song_length','target']].sample(300000))
+
++

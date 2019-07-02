@@ -16,9 +16,9 @@ train.csv: (7377418, 6)
                         UNIQ.          NULL     
 msno                   30755  ✓
 song_id               359966  ✓
-source_system_tab          8           24849
-source_screen_name        20           414804
-source_type               12           21539
+source_system_tab          8  ✓       24849
+source_screen_name        20  ✓       414804
+source_type               12  ✓       21539
 target                     2  Pred_avg:0.504
 
 members.csv:(34403, 7)
@@ -54,7 +54,8 @@ train=train.merge(songs,how='left',on='song_id')
 id_features=    ['msno','song_id']
 member_features=['city','bd','gender']
 songs_features= ['genre_ids','artist_name','language']
-features=id_features+member_features+songs_features
+context_features=['source_system_tab','source_screen_name','source_type']
+features=id_features+member_features+songs_features+context_features
 
 data=train[features+['target']]
 
@@ -63,6 +64,10 @@ data.loc[:,'gender'] =    data['gender'].fillna('unknown')            #
 data.loc[:,'genre_ids']=  data['genre_ids'].fillna('-1')              #465|458
 data.loc[:,'language']=   data['language'].fillna(-1).astype(int)     #52.0->52
 data.loc[:,'artist_name']=data['artist_name'].fillna('unknown')       #S.H.E
+
+data.loc[:,'source_system_tab']=data['source_system_tab'].fillna('unknown')
+data.loc[:,'source_screen_name']=data['source_screen_name'].fillna('unknown')
+data.loc[:,'source_type']=data['source_type'].fillna('unknown')
 
 #print(data.isnull().sum())
 
@@ -127,7 +132,8 @@ target              2
 print("Data Prepared.")
 train_data=data.loc[data.index.difference(test_data.index),:]#5862501
 
-train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language']
+train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language']+ \
+                    ['source_system_tab','source_screen_name','source_type']
 features_sizes=[1+train_data[c].nunique() for c in train_features]#todo: 需要+1留出冷启动id
 from utils import ColdStartEncoder
 encs=[]
@@ -157,12 +163,13 @@ y_test=y_test.values.reshape((-1,1))
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
-#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)])
-#model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
+#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
+#model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,8))
 model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
+#model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
 best_score = model.fit(X_train[train_features], X_test[train_features], y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
@@ -175,7 +182,7 @@ print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_test,y_pred))
 test_data_=pd.concat([test_data_new_msno,test_data_new_song,test_data_old],axis=0).copy()
 for i,c in enumerate(train_features):
     enc = encs[i]
-    test_data_[c] = enc.transform(test_data[c])
+    test_data_[c] = enc.transform(test_data_[c])
 y_pred_test=model.predict(test_data_[train_features])
 y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
 print("ROC-AUC score on test set: %.4f" %roc_auc_score(test_data_['target'],y_pred_test))

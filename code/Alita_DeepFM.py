@@ -312,9 +312,9 @@ class Alita_DeepFM(BaseEstimator):
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use CFM")
-            #afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
-            afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
+            print("use AFM")
+            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
+            #afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
             self.pred+=afm_out
             self.L2_reg+=reg
 

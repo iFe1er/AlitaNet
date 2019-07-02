@@ -73,7 +73,7 @@ class ColdStartEncoder():
         else:
             raise Exception('Only Series and list supported')
         #编码从1起步
-        self.encoding_dict={value:count for value,count in zip(unique_values,range(1,len(unique_values)+1))}
+        self.encoding_dict={value:encoded for value,encoded in zip(unique_values,range(1,len(unique_values)+1))}
         self.status = 'fitted'
 
     def transform(self,col):
