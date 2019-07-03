@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 import os
 from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM
-from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -103,11 +102,35 @@ sample_intersec_people=len(train_msno&sample_data_msno)#28576
 '''
 
 
-train_data=data.iloc[:5533063,:]        #5533063/7377418.0=75%
-valid_data=data.iloc[5533063:6270804,:] #737741/7377418.0 =10%
-test_data= data.iloc[6270804:,:]        #1106614/7377418.0=15%
-print("Data Prepared.")
 
+#同样比例获取测试集msnoID
+np.random.seed(42)
+#测试占比20% ，给3000个新用户
+test_msno=np.random.choice(train['msno'].unique(),2000)
+test_song=np.random.choice(train['song_id'].unique(),20000)
+
+test_data_new_msno=data[data['msno'].isin(test_msno)]#448194
+test_data_new_song=data[(~data['msno'].isin(test_msno))&(data['song_id'].isin(test_song))]#415334
+
+test_data_old=data[(~data['msno'].isin(test_msno))&(~data['song_id'].isin(test_song))].sample(frac=0.10,random_state=42)#651389
+test_data=pd.concat([test_data_new_msno,test_data_new_song,test_data_old],axis=0)#1514917
+#train_data=data.loc[data.index.difference(test_data.index),:]#5862501
+
+'''
+train_data
+msno            28619
+song_id        314735
+city               21
+bd                 92
+gender              3
+genre_ids         546
+artist_name     37336
+language           10
+target              2
+'''
+
+print("Data Prepared.")
+train_data=data.loc[data.index.difference(test_data.index),:]#5862501
 
 train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language']+ \
                     ['source_system_tab','source_screen_name','source_type']
@@ -116,17 +139,12 @@ from utils import ColdStartEncoder
 encs=[]
 for c in train_features:
     enc = ColdStartEncoder()#放里面 [BUG fix]
-    train_data.loc[:,c] = enc.fit_transform(train_data[c])
-    valid_data.loc[:,c] = enc.transform(valid_data[c])
-    test_data. loc[:,c] = enc.transform(test_data[c])
+    train_data[c] = enc.fit_transform(train_data[c])
     encs.append(enc)
-#end transform
-
-X_train,X_valid, X_test,y_train, y_valid, y_test = train_data[train_features],valid_data[train_features],test_data[train_features],\
-                                                   train_data['target'],valid_data['target'],test_data['target']
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(train_data[train_features], train_data['target'], test_size = 0.125, random_state = 42)
 y_train=y_train.values.reshape((-1,1))
-y_valid=y_valid.values.reshape((-1,1))
-y_test =y_test.values.reshape((-1,1))
+y_test=y_test.values.reshape((-1,1))
 
 '''
 train_features=['msno','song_id']
@@ -144,26 +162,30 @@ y_test=y_test.values.reshape((-1,1))
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
-#model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
+#model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,8))
 #model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
-model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
+#model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
-best_score = model.fit(X_train, X_valid, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train[train_features], X_test[train_features], y_train, y_test, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+y_pred=model.predict(X_test)
+y_pred=1./(1.+np.exp(-1.*y_pred))#sigmoid transform
+from sklearn.metrics import roc_auc_score,log_loss
+print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_test,y_pred))
+#print(log_loss(y_test,y_pred))
 
-y_pred_valid = model.predict(X_valid)
-y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
-print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
-
-
-y_pred_test=model.predict(X_test)
+test_data_=pd.concat([test_data_new_msno,test_data_new_song,test_data_old],axis=0).copy()
+for i,c in enumerate(train_features):
+    enc = encs[i]
+    test_data_[c] = enc.transform(test_data_[c])
+y_pred_test=model.predict(test_data_[train_features])
 y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
-print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
+print("ROC-AUC score on test set: %.4f" %roc_auc_score(test_data_['target'],y_pred_test))
 
 
 SUBMIT=False
@@ -175,20 +197,17 @@ if SUBMIT:
     test.loc[:,'genre_ids']=  test['genre_ids'].fillna('-1')              #465|458
     test.loc[:,'language']=   test['language'].fillna(-1).astype(int)     #52.0->52
     test.loc[:,'artist_name']=test['artist_name'].fillna('unknown')       #S.H.E
-    test.loc[:, 'source_system_tab'] = test['source_system_tab'].fillna('unknown')
-    test.loc[:, 'source_screen_name'] = test['source_screen_name'].fillna('unknown')
-    test.loc[:, 'source_type'] = test['source_type'].fillna('unknown')
-
-    predict_data=test[train_features] #(2556790, 8)
+    test_data=test[train_features] #(2556790, 8)
+    test_data_=test_data.copy()
     for i,c in enumerate(train_features):
         enc = encs[i]
-        predict_data[c] = enc.transform(predict_data[c])
-    y_pred_submit=model.predict(predict_data[train_features])
-    y_pred_test=1./(1.+np.exp(-1.*y_pred_submit))#sigmoid transform
+        test_data_[c] = enc.transform(test_data[c])
+    y_pred_test=model.predict(test_data_[train_features])
+    y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
     sub['target']=y_pred_test
-    sub.to_csv(data_path+'sub/FM_F11_time_valid0.6775_test0.6424.csv',index=False)
+    sub.to_csv(data_path+'sub/FM_F5_valid0.7344_test0.6867.csv',index=False)
 
 
 

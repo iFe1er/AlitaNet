@@ -323,6 +323,17 @@ COLDAVG:
 LR              0.7651     25      0.7334       0.7862      0.6573
 FM(k=8)         0.7932     20      0.7470       0.8580      0.6439
 
+
+TIME:
+             valid_AUC    epoch    test_AUC    train_AUC    Kaggle    params
+LR              0.6779     22      0.6448       0.7960      0.6485
+LR COLD         0.6772     21      0.6425       0.7951      0.6468
+FM(k=8)         0.6775     3       0.6424       0.7862      0.6465
+FM(k=8)COLD     0.6768     3       0.6424       0.7866      0.6455
+MLP(k8(8,8))    0.6797     2       0.6419       0.7867      0.6434
+MLP(k8(8,8))COLD0.6794     2       0.6423       0.7855      0.6445
+DFM             0.6817     5       0.6452       0.8236      0.6421
+AFM             0.6780     2       0.6417       0.7769      0.6451
 +notebook:
 import seaborn as sns
 sns.regplot(x='song_length',y='target',data=train[['song_length','target']].sample(300000))

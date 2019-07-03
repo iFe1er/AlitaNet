@@ -24,7 +24,7 @@ class Alita_DeepFM(BaseEstimator):
         self.use_NFM=use_NFM
         self.use_AutoInt=use_AutoInt
 
-        self.coldStartAvg=True
+        self.coldStartAvg=False
         self.dropout_keeprate=dropout_keeprate
         self.lambda_l2=lambda_l2
 
