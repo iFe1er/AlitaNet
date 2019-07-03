@@ -162,10 +162,10 @@ y_test=y_test.values.reshape((-1,1))
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,8))
-model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)

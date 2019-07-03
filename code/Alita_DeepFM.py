@@ -24,6 +24,7 @@ class Alita_DeepFM(BaseEstimator):
         self.use_NFM=use_NFM
         self.use_AutoInt=use_AutoInt
 
+        self.coldStartAvg=True
         self.dropout_keeprate=dropout_keeprate
         self.lambda_l2=lambda_l2
 
@@ -367,6 +368,10 @@ class Alita_DeepFM(BaseEstimator):
                     y_preds_train.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
             train_loss/=total_batches
 
+            if self.coldStartAvg:
+                print("Cold Start Averaging start") if epoch==0 else None
+                self.coldStartAvgTool()
+
             #todo movielens afm rounded
             test_loss=0.;y_preds=[]
             for bx,by in batcher(ids_test,y_test,batch_size,self.hash_size):
@@ -442,6 +447,22 @@ class Alita_DeepFM(BaseEstimator):
         for bx, by in batcher(self.ids_test,self.y_test, 500,hash_size=self.hash_size):
             self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
         return np.array(self.attention_masks)
+
+    def coldStartAvgTool(self):
+        ops = []
+        cold_start_idx=0
+        for i,sizes in enumerate(self.features_sizes):
+            if self.use_LR:
+                #num_features,1
+                op=self.w[cold_start_idx].assign(tf.reduce_mean(self.w[cold_start_idx+1:cold_start_idx+self.features_sizes[i]],axis=0,keepdims=False))
+                ops.append(op)
+            #EMBEDDING
+            if self.use_FM or self.use_MLP or self.use_AutoInt:
+                op=self.embedding_weights[cold_start_idx,:].assign(tf.reduce_mean(self.embedding_weights[cold_start_idx+1:cold_start_idx+self.features_sizes[i],:],axis=0,keepdims=False))
+                ops.append(op)
+            cold_start_idx=cold_start_idx+self.features_sizes[i]
+        self.sess.run(ops)
+
 
 if __name__ == '__main__':
     import pandas as pd
