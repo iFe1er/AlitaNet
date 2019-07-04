@@ -85,6 +85,23 @@ class ColdStartEncoder():
         self.fit(col)
         return self.transform(col)
 
+def multihot_padder(col,sep='|',padding_len=None):
+    assert isinstance(col,pd.Series)
+
+    if not padding_len:
+        t = col.apply(lambda x: np.array([int(i) for i in x.split('|')]))
+        lens = np.array([len(i) for i in t])
+        padding_len=max(lens)
+    else:
+        t = col.apply(lambda x: np.array([int(i) for i in x.split('|')][:padding_len]))
+        lens = np.array([len(i) for i in t])
+
+    print("Padding Len: %s"%padding_len)
+    mask=np.arange(padding_len)<lens.reshape([-1,1])
+    result=np.zeros([col.shape[0],padding_len])
+    result[mask]=np.concatenate(t.values)#变成一位向量 填入 print(result[14,:])
+    return result,padding_len
+
 '''
 #test speed 
 from datetime import datetime

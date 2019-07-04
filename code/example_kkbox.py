@@ -102,15 +102,25 @@ sample_data_msno=set(sample_data['msno'])#28576
 sample_intersec_people=len(train_msno&sample_data_msno)#28576
 '''
 
+'''
+#padding 特征.副作用.
+from utils import multihot_padder
+padding_genre,padding_genre_len=multihot_padder(data['genre_ids'])
+for i in range(padding_genre_len):
+    feature_name='genre_pad_'+str(i+1)
+    data[feature_name]=padding_genre[:,i].astype(int)
+'''
 
-train_data=data.iloc[:5533063,:]        #5533063/7377418.0=75%
-valid_data=data.iloc[5533063:6270804,:] #737741/7377418.0 =10%
-test_data= data.iloc[6270804:,:]        #1106614/7377418.0=15%
+train_data=data.iloc[:5533063,:].sample(frac=1.0,random_state=42)        #5533063/7377418.0=75%
+valid_data=data.iloc[5533063:6270804,:].sample(frac=1.0,random_state=42) #737741/7377418.0 =10%
+test_data= data.iloc[6270804:,:].sample(frac=1.0,random_state=42)        #1106614/7377418.0=15%
 print("Data Prepared.")
 
 
-train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language']+ \
-                    ['source_system_tab','source_screen_name','source_type']
+train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language',
+                    'source_system_tab','source_screen_name','source_type']
+                #['genre_pad_'+str(i+1) for i in range(padding_genre_len)]
+
 features_sizes=[1+train_data[c].nunique() for c in train_features]#todo: 需要+1留出冷启动id
 from utils import ColdStartEncoder
 encs=[]
@@ -144,13 +154,13 @@ y_test=y_test.values.reshape((-1,1))
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
-model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
+#model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
@@ -178,7 +188,12 @@ if SUBMIT:
     test.loc[:, 'source_system_tab'] = test['source_system_tab'].fillna('unknown')
     test.loc[:, 'source_screen_name'] = test['source_screen_name'].fillna('unknown')
     test.loc[:, 'source_type'] = test['source_type'].fillna('unknown')
-
+    '''
+    padding_genre_test, _ = multihot_padder(test['genre_ids'],padding_len=padding_genre_len)
+    for i in range(padding_genre_len):
+        feature_name = 'genre_pad_' + str(i + 1)
+        test[feature_name] = padding_genre_test[:, i].astype(int)
+    '''
     predict_data=test[train_features] #(2556790, 8)
     for i,c in enumerate(train_features):
         enc = encs[i]
@@ -188,8 +203,8 @@ if SUBMIT:
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
     sub['target']=y_pred_test
-    sub.to_csv(data_path+'sub/FM_F11_time_valid0.6775_test0.6424.csv',index=False)
-
+    sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
+    #LR_F19(pad8)_timeSF_valid0.6795_test0.6511.csv
 
 
 '''
@@ -208,22 +223,54 @@ tt=enc.transform(test_data['msno'])
 '''
 import lightgbm as lgb
 train_Dataset = lgb.Dataset(X_train,label=y_train.reshape(-1))
-valid_Dataset = lgb.Dataset(X_test,label=y_test.reshape(-1))
+valid_Dataset = lgb.Dataset(X_valid,label=y_valid.reshape(-1))
 params = {
     'objective': 'binary',
     'metric': 'auc',
     'boosting': 'gbdt',
     'learning_rate': 0.1 ,
     'verbose': 0,
-    'num_leaves': 31,
-    'bagging_fraction': 0.95,
+    'num_leaves': 63,
+    'bagging_fraction': 0.8,
     'bagging_freq': 1,
     'bagging_seed': 1,
-    'feature_fraction': 0.9,
+    'feature_fraction': 0.8,
     'feature_fraction_seed': 1,
-    'max_bin': 128,
-    'max_depth': 10,
-    'num_rounds': 200,
+    'max_bin': 255,
+    'max_depth': 15,
     }
-bst = lgb.train(params, train_Dataset, num_boost_round=200, valid_sets=valid_Dataset,early_stopping_rounds=10)#0.535
+bst = lgb.train(params, train_Dataset, num_boost_round=500, valid_sets=[train_Dataset,valid_Dataset],early_stopping_rounds=10)
+
+
+y_pred_valid = bst.predict(X_valid)
+y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
+print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
+
+
+y_pred_test=bst.predict(X_test)
+y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
+print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
+
+if False:
+    test=pd.read_csv(data_path+'test.csv')
+    test=test.merge(members,how='left',on='msno')
+    test=test.merge(songs,how='left',on='song_id')
+    test.loc[:,'gender'] =    test['gender'].fillna('unknown')            #
+    test.loc[:,'genre_ids']=  test['genre_ids'].fillna('-1')              #465|458
+    test.loc[:,'language']=   test['language'].fillna(-1).astype(int)     #52.0->52
+    test.loc[:,'artist_name']=test['artist_name'].fillna('unknown')       #S.H.E
+    test.loc[:, 'source_system_tab'] = test['source_system_tab'].fillna('unknown')
+    test.loc[:, 'source_screen_name'] = test['source_screen_name'].fillna('unknown')
+    test.loc[:, 'source_type'] = test['source_type'].fillna('unknown')
+    
+    predict_data=test[train_features] #(2556790, 8)
+    for i,c in enumerate(train_features):
+        enc = encs[i]
+        predict_data[c] = enc.transform(predict_data[c])
+        
+    y_pred_submit=bst.predict(predict_data[train_features])#LGB不需要sigmoid
+    #submission online
+    sub=pd.read_csv(data_path+'sample_submission.csv')
+    sub['target']=y_pred_submit
+    sub.to_csv(data_path+'sub/LGB_F11_timeSF_valid0.6470_test0.6339.csv',index=False)
 '''

@@ -58,7 +58,9 @@ class Alita_DeepFM(BaseEstimator):
             #CFM:
             self.AFM_weights['conv_W']=tf.Variable(initializer([self.c*self.k,1]))
             self.oup=1
+            #todo
             self.AFM_weights['filter'] = tf.Variable(initializer([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
+            #self.AFM_weights['filter'] = tf.Variable(tf.ones([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
             self.AFM_weights['proj']=tf.Variable(initializer([self.oup,1]))
 
             #CNFM:
@@ -82,7 +84,10 @@ class Alita_DeepFM(BaseEstimator):
             self.NFM_weights['b1']=tf.Variable(initializer([self.k]))
             self.NFM_weights['b2']=tf.Variable(initializer([self.k]))
             self.NFM_weights['Wout']=tf.Variable(initializer([self.k,1]))
+            #todo NFM simple k->1's Wout init (+0.4%)
+            #self.NFM_weights['Wout'] = tf.Variable(tf.ones([self.k,1]))
             self.NFM_weights['bout']=tf.Variable(initializer([1]))
+
 
         if self.use_AutoInt:
             self.autoint_d=16
@@ -313,9 +318,9 @@ class Alita_DeepFM(BaseEstimator):
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use AFM")
-            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
-            #afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
+            print("use CFM")
+            #afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
+            afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
             self.pred+=afm_out
             self.L2_reg+=reg
 
