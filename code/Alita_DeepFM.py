@@ -6,7 +6,7 @@ from utils import batcher,isBetter
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -23,6 +23,7 @@ class Alita_DeepFM(BaseEstimator):
         self.attention_FM=attention_FM#同时代表attention hidden layer size
         self.use_NFM=use_NFM
         self.use_AutoInt=use_AutoInt
+        self.autoint_params=autoint_params if autoint_params is not None else {"autoint_d":8,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True}
 
         self.coldStartAvg=False
         self.dropout_keeprate=dropout_keeprate
@@ -90,17 +91,20 @@ class Alita_DeepFM(BaseEstimator):
 
 
         if self.use_AutoInt:
-            self.autoint_d=16
-            self.autoint_head=1
+            #d=8 head=2 layer=3
+            self.autoint_d=    self.autoint_params['autoint_d']
+            self.autoint_head= self.autoint_params['autoint_heads']
+            self.autoint_layer=self.autoint_params['autoint_layers']
+            print("AutoInt params:",self.autoint_params)
             self.AutoInt_weights={}
-            for layer in range(3):
-                first_dim = self.k if layer==0 else self.autoint_d
-                self.AutoInt_weights['W_query_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d]))
-                self.AutoInt_weights['W_key_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d]))
-                self.AutoInt_weights['W_value_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d]))
-                self.AutoInt_weights['W_res_'+str(layer+1)] = tf.Variable(initializer([first_dim, self.autoint_d]))
+            for layer in range(self.autoint_layer):
+                first_dim = self.k if layer==0 else self.autoint_d*self.autoint_head
+                self.AutoInt_weights['W_query_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d*self.autoint_head]))
+                self.AutoInt_weights['W_key_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d*self.autoint_head]))
+                self.AutoInt_weights['W_value_'+str(layer+1)]=tf.Variable(initializer([first_dim,self.autoint_d*self.autoint_head]))
+                self.AutoInt_weights['W_res_'+str(layer+1)] = tf.Variable(initializer([first_dim, self.autoint_d*self.autoint_head]))
 
-            self.AutoInt_weights['W_out'] = tf.Variable(initializer([self.fields*self.autoint_d,1]))
+            self.AutoInt_weights['W_out'] = tf.Variable(initializer([self.fields*self.autoint_d*self.autoint_head,1]))
             self.AutoInt_weights['b_out'] = tf.Variable(initializer([1]))
 
         if self.use_MLP:
@@ -230,7 +234,7 @@ class Alita_DeepFM(BaseEstimator):
         #imp1 matmul style
         #cross_term=tf.reshape(cross_term,shape=[-1,self.c*self.k])
         #out=tf.matmul(cross_term,AFM_weights['conv_W'])#(None,ck)*(ck,1)=(None,1)
-        #return out,tf.nn.l2_loss(AFM_weights['filter'])
+        #return out,tf.nn.l2_loss(AFM_weights['conv_W'])
 
         #imp2 conv2d style: tune self.oup=1 is best.
         cross_term = tf.expand_dims(cross_term,axis=-1)
@@ -267,17 +271,27 @@ class Alita_DeepFM(BaseEstimator):
 
     #Embedding:(none,f,k)
     def AutoInt(self,embedding,AutoInt_Weights,layer):
-        query=tf.tensordot(embedding,AutoInt_Weights['W_query_'+str(layer+1)],axes=[[2],[0]])#N,f,k*k,d= N,f,d
-        key=  tf.tensordot(embedding,AutoInt_Weights['W_key_'+str(layer+1)],axes=[[2],[0]])#N,f,d
-        value = tf.tensordot(embedding, AutoInt_Weights['W_value_'+str(layer+1)], axes=[[2], [0]])#N,f,d
-        self.normalize_autoint_att_score=tf.nn.softmax(tf.matmul(query,key,transpose_b=True))#N,f,f
-        out=tf.matmul(self.normalize_autoint_att_score,value)#N,f,d
+        querys=tf.tensordot(embedding,AutoInt_Weights['W_query_'+str(layer+1)],axes=[[2],[0]])#(N,f,k) * (k,d*head)= N,f,d*head
+        keys=  tf.tensordot(embedding,AutoInt_Weights['W_key_'+str(layer+1)],axes=[[2],[0]])#N,f,d*head
+        values = tf.tensordot(embedding, AutoInt_Weights['W_value_'+str(layer+1)], axes=[[2], [0]])#N,f,d*head
 
-        use_res=True
-        if use_res:
+        #head,N,f,d
+        querys = tf.stack(tf.split(querys, self.autoint_head, axis=2))#default axis=0 (head,N,f,d)
+        keys = tf.stack(tf.split(keys, self.autoint_head, axis=2))
+        values = tf.stack(tf.split(values, self.autoint_head, axis=2))
+
+        self.normalize_autoint_att_score=tf.nn.softmax(tf.matmul(querys,keys,transpose_b=True))#heads,N,f,f
+        out=tf.matmul(self.normalize_autoint_att_score,values)#heads,N,f,d
+        out = tf.concat(tf.split(out, self.autoint_head,axis=0), axis=-1) #[(N,f,d)*heads] --concat--> [1,N,f,d*heads]
+        out = tf.squeeze(out, axis=0)  # (N,f,d*heads)
+
+        if self.autoint_params['use_res']:
+            #                 first round：N,f,k    k,d*heads  | others:  N,f,d*heads  d*heads,d*heads
             out+=tf.tensordot(embedding,AutoInt_Weights['W_res_'+str(layer+1)],axes=[[2],[0]])
+
+        if self.autoint_params['relu']:
+            out=tf.nn.relu(out)
         return out
-        #return tf.matmul(tf.reshape(out,shape=[-1,self.fields*self.autoint_d]),AutoInt_Weights['W_out'])+AutoInt_Weights['b_out']
 
 
     def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
@@ -326,9 +340,9 @@ class Alita_DeepFM(BaseEstimator):
 
         if self.use_AutoInt:
             self.y_deep=self.embedding
-            for l in range(3):
-                self.y_deep=self.AutoInt(self.y_deep,self.AutoInt_weights,layer=l)#N,f,d
-            self.pred+=tf.matmul(tf.reshape(self.y_deep,shape=[-1,self.fields*self.autoint_d]),self.AutoInt_weights['W_out'])+self.AutoInt_weights['b_out']
+            for _l in range(self.autoint_params['autoint_layers']):
+                self.y_deep=self.AutoInt(self.y_deep,self.AutoInt_weights,layer=_l)#N,f,d
+            self.pred+=tf.matmul(tf.reshape(self.y_deep,shape=[-1,self.fields*self.autoint_d*self.autoint_head]),self.AutoInt_weights['W_out'])+self.AutoInt_weights['b_out']
         if self.use_MLP:
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)

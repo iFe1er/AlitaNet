@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM,AutoInt
 from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -154,14 +154,15 @@ y_test=y_test.values.reshape((-1,1))
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
-#model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)
+#model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,lambda_l2=0.005)#oup=1时l2=0.005;oup=4时l2=0.0025
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
+model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
 best_score = model.fit(X_train, X_valid, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
@@ -231,10 +232,10 @@ params = {
     'learning_rate': 0.1 ,
     'verbose': 0,
     'num_leaves': 63,
-    'bagging_fraction': 0.8,
+    'bagging_fraction': 1.0,#0.8 bad
     'bagging_freq': 1,
     'bagging_seed': 1,
-    'feature_fraction': 0.8,
+    'feature_fraction': 1.0,#0.8 bad
     'feature_fraction_seed': 1,
     'max_bin': 255,
     'max_depth': 15,
@@ -243,12 +244,10 @@ bst = lgb.train(params, train_Dataset, num_boost_round=500, valid_sets=[train_Da
 
 
 y_pred_valid = bst.predict(X_valid)
-y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
 print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
 
 
 y_pred_test=bst.predict(X_test)
-y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
 print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
 
 if False:
