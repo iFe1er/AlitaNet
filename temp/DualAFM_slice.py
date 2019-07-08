@@ -160,15 +160,3 @@ def AFM3(self, embedding, AFM_weights):
     k_attention_out=attention_out*self.k_normalize_att_score
     return tf.matmul(k_attention_out, AFM_weights['projection_p'])  # (None,k)*(k,1)=(None,1)
 '''
-import matplotlib.pyplot as plt
-from sklearn.svm import SVC
-from sklearn.model_selection import StratifiedKFold
-from sklearn.feature_selection import RFECV
-from sklearn.datasets import make_classification
-
-# Create the RFE object and compute a cross-validated score.
-svc = SVC(kernel="linear")
-# The "accuracy" scoring is proportional to the number of correct
-# classifications
-rfecv = RFECV(estimator=svc, step=1, cv=StratifiedKFold(2),
-              scoring='accuracy')

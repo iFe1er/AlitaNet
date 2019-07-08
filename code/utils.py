@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-def batcher(X_, y_=None, batch_size=-1,hash_size=None):
+def batcher(X_, y_=None,X_dense=None, batch_size=-1,hash_size=None):
     n_samples = X_.shape[0]
     if batch_size == -1:
         batch_size = n_samples
@@ -15,15 +15,28 @@ def batcher(X_, y_=None, batch_size=-1,hash_size=None):
         X_=np.array(X_hash)
         #print(X_)
         #print(y_) if y_ is not None else print(None)
-    for i in range(0, n_samples, batch_size):
-        upper_bound = min(i + batch_size, n_samples)
-        ret_x = X_[i:upper_bound]
-        ret_y = None
-        if y_ is not None:
-            ret_y = y_[i:upper_bound]
-            yield (ret_x, ret_y)
-        else:
-            yield ret_x
+    #只有离散输入
+    if X_dense is None:
+        for i in range(0, n_samples, batch_size):
+            upper_bound = min(i + batch_size, n_samples)
+            ret_x = X_[i:upper_bound]
+            ret_y = None
+            if y_ is not None:
+                ret_y = y_[i:upper_bound]
+                yield (ret_x,None,ret_y)
+            else:
+                yield (ret_x,None)
+    else:
+        for i in range(0, n_samples, batch_size):
+            upper_bound = min(i + batch_size, n_samples)
+            ret_x = X_[i:upper_bound]
+            ret_xdense=X_dense[i:upper_bound]
+            ret_y = None
+            if y_ is not None:
+                ret_y = y_[i:upper_bound]
+                yield (ret_x,ret_xdense,ret_y)
+            else:
+                yield (ret_x,ret_xdense)
 
 #Xs_:[Xs,Xs...] 长度为field
 def list_batcher(Xs_, y_=None, batch_size=-1):

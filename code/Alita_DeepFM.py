@@ -1,16 +1,18 @@
 import tensorflow as tf
 import numpy as np
+import time
 from sklearn.base import BaseEstimator
 from sklearn.metrics import roc_auc_score
 from utils import batcher,isBetter
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
         self.hash_size=hash_size
+        self.dense_features_size=dense_features_size
         self.loss_type=loss_type
         self.metric_type=metric_type#only support AUC
         self.deep_layers=deep_layers
@@ -110,7 +112,7 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_MLP:
             #MLP weights
             self.weights, self.bias = {}, {}
-            self.MLP_n_input=k*self.fields
+            self.MLP_n_input=k*self.fields+self.dense_features_size
             for i,layer in enumerate(self.deep_layers):
                 if i==0:
                     self.weights['h'+str(i+1)]=tf.Variable(initializer([self.MLP_n_input,layer]))
@@ -119,7 +121,7 @@ class Alita_DeepFM(BaseEstimator):
                 self.bias['b'+str(i+1)]=tf.Variable(initializer([layer]))
             self.weights['out']= tf.Variable(initializer([self.deep_layers[-1],1]))
             self.bias['out'] = tf.Variable(initializer([1]))
-        print("Model Inited. Prediction Layer: LR %s; FM %s; MLP %s" % (use_LR,use_FM,use_MLP))
+        print("[Info] Model Inited. Prediction Layer: LR %s; FM %s; MLP %s; AutoInt %s" % (use_LR,use_FM,use_MLP,use_AutoInt))
 
     def _init_session(self):
         config = tf.ConfigProto()
@@ -134,7 +136,7 @@ class Alita_DeepFM(BaseEstimator):
 
     def Embedding(self,ids,params):
         #params:self.embedding(sum_features_sizes,k)   ids:(None,fields)  out=shape(ids)+shape(params[1:])=(None,fields,k)
-        return tf.nn.embedding_lookup(params,ids)
+        return tf.nn.embedding_lookup(params,ids),tf.nn.l2_loss(params)
 
     def MLP(self,x,weights,bias):
         last_layer=None
@@ -282,7 +284,7 @@ class Alita_DeepFM(BaseEstimator):
 
         self.normalize_autoint_att_score=tf.nn.softmax(tf.matmul(querys,keys,transpose_b=True))#heads,N,f,f
         out=tf.matmul(self.normalize_autoint_att_score,values)#heads,N,f,d
-        out = tf.concat(tf.split(out, self.autoint_head,axis=0), axis=-1) #[(N,f,d)*heads] --concat--> [1,N,f,d*heads]
+        out = tf.concat(tf.split(out, self.autoint_head,axis=0), axis=-1) #[(N,f,d)*heads个] --concat--> [1,N,f,d*heads]
         out = tf.squeeze(out, axis=0)  # (N,f,d*heads)
 
         if self.autoint_params['use_res']:
@@ -294,7 +296,7 @@ class Alita_DeepFM(BaseEstimator):
         return out
 
 
-    def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
+    def fit(self,ids_train,ids_test,y_train,y_test,dense_train=None,dense_test=None,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20,):
         #[bug fix]mutable prevention 19/06/27
         ids_train=ids_train.copy()
         ids_test=ids_test.copy()
@@ -310,13 +312,17 @@ class Alita_DeepFM(BaseEstimator):
             self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
 
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
+        self.dense_inputs=tf.placeholder(tf.float32,[None,self.dense_features_size])
         self.y=tf.placeholder(tf.float32,[None,1])
+        self.L2_reg = 0
 
         self.dropout_keeprate_holder=tf.placeholder(tf.float32)
-        if self.use_FM or self.use_MLP or self.use_AutoInt:
-            self.embedding=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
 
-        self.pred=0;self.L2_reg=0
+        embed_L2=0
+        if self.use_FM or self.use_MLP or self.use_AutoInt:
+            self.embedding,embed_L2=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
+
+        self.pred=0
         if self.use_LR:
             #bug detected. LR didn't keepdims
             self.pred=self.LR(self.ids,self.w,self.b)
@@ -344,7 +350,9 @@ class Alita_DeepFM(BaseEstimator):
                 self.y_deep=self.AutoInt(self.y_deep,self.AutoInt_weights,layer=_l)#N,f,d
             self.pred+=tf.matmul(tf.reshape(self.y_deep,shape=[-1,self.fields*self.autoint_d*self.autoint_head]),self.AutoInt_weights['W_out'])+self.AutoInt_weights['b_out']
         if self.use_MLP:
-            MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])
+            MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])#(N,f*k)
+            if self.dense_features_size>0:
+                MLP_in=tf.concat([MLP_in,self.dense_inputs],axis=1)#(N,f*k+dense)
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)
             #self.pred=self.SqueezeEmbLR(self.embedding,self.SqueezeEmb_LRWeight)
         assert self.pred is not None,"must have one predicion layer"
@@ -359,7 +367,8 @@ class Alita_DeepFM(BaseEstimator):
         else:
             raise Exception("Loss type %s not supported"%self.loss_type)
 
-        self.loss += self.lambda_l2*self.L2_reg
+        #todo EMBEDL2 coef
+        self.loss += self.lambda_l2*self.L2_reg + embed_L2*1e-5
         self.optimizer=tf.train.AdamOptimizer(lr).minimize(self.loss)
 
         if self.metric_type is not None:
@@ -380,11 +389,17 @@ class Alita_DeepFM(BaseEstimator):
         for epoch in range(N_EPOCH):
             train_loss=0.;y_preds_train=[]
             total_batches=int(ids_train.shape[0]/batch_size)
-            for bx,by in batcher(ids_train,y_train,batch_size,self.hash_size):
-                _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:self.dropout_keeprate})
+            # id input + dense input
+            for bx,bx_dense,by in batcher(ids_train,y_train,X_dense=dense_train,batch_size=batch_size,hash_size=self.hash_size):
+                if self.dense_features_size>0:
+                    _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dense_inputs:bx_dense,self.dropout_keeprate_holder:self.dropout_keeprate})
+                else:
+                    _,l=self.sess.run([self.optimizer,self.loss],feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:self.dropout_keeprate})
                 train_loss+=l #if not self.metric_type else l[1]
                 if self.metric_type:
-                    y_preds_train.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
+                    y_preds_train.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dense_inputs:bx_dense,self.dropout_keeprate_holder:1.0})) \
+                    if self.dense_features_size>0 \
+                    else y_preds_train.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
             train_loss/=total_batches
 
             if self.coldStartAvg:
@@ -393,11 +408,18 @@ class Alita_DeepFM(BaseEstimator):
 
             #todo movielens afm rounded
             test_loss=0.;y_preds=[]
-            for bx,by in batcher(ids_test,y_test,batch_size,self.hash_size):
-                l=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by})
+            for bx,bx_dense,by in batcher(ids_test,y_test,X_dense=dense_test,batch_size=batch_size,hash_size=self.hash_size):
+                if self.dense_features_size > 0:
+                    l=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by,self.dense_inputs:bx_dense,self.dropout_keeprate_holder:1.0})
+                else:
+                    l=self.sess.run(self.loss,feed_dict={self.ids:bx,self.y:by,self.dropout_keeprate_holder:1.0})
                 test_loss+=l #if not self.metric_type else l[1]
                 if self.metric_type:
-                    y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
+                    y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dense_inputs:bx_dense,self.dropout_keeprate_holder:1.0})) \
+                    if self.dense_features_size>0 \
+                    else y_preds.append(self.sess.run(self.pred,feed_dict={self.ids:bx,self.dropout_keeprate_holder:1.0}))
+
+
             test_loss/=int(ids_test.shape[0]/batch_size)
             '''
             y_pred=np.concatenate(y_preds, axis=0).reshape((-1))
@@ -438,18 +460,24 @@ class Alita_DeepFM(BaseEstimator):
         return best_score
 
 
-    def predict(self,ids_pred):
+    def predict(self,ids_pred,dense_pred=None):
         # [bug fix]mutable prevention 19/06/27
+        start_time=time.time()
         ids_pred=ids_pred.copy()
         if self.hash_size is None:
             for i,column in enumerate(ids_pred.columns):
                 if i>=1:
                     ids_pred.loc[:,column]=ids_pred[column]+sum(self.features_sizes[:i])
         outputs = []
-        self.ids_pred=ids_pred
-        for bx in batcher(ids_pred,None,batch_size=self.batch_size,hash_size=self.hash_size): #y=None
-            outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dropout_keeprate_holder:1.0}))
+        #self.ids_pred=ids_pred 0708 del
+        for bx,bx_dense in batcher(ids_pred,y_=None,X_dense=dense_pred,batch_size=self.batch_size,hash_size=self.hash_size): #y=None
+            if self.dense_features_size > 0:
+                outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dense_inputs:bx_dense,self.dropout_keeprate_holder:1.0}))
+            else:#bx_dense==None
+                outputs.append(self.sess.run(self.pred, feed_dict={self.ids: bx,self.dropout_keeprate_holder:1.0}))
         self.output=np.concatenate(outputs, axis=0)   #.reshape((-1))
+        time_cost=time.time()-start_time
+        print("Time cost: %3f seconds, average epoch time:%2f ms" % (time_cost,(time_cost/len(outputs))*1000))
         return self.output
 
     def __del__(self):
@@ -463,7 +491,7 @@ class Alita_DeepFM(BaseEstimator):
         if not self.attention_FM:
             return
         self.attention_masks=[]
-        for bx, by in batcher(self.ids_test,self.y_test, 500,hash_size=self.hash_size):
+        for bx, by in batcher(self.ids_test,self.y_test, batch_size=500,hash_size=self.hash_size):#dense
             self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
         return np.array(self.attention_masks)
 

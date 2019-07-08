@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM,AutoInt
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM,AutoInt,DeepAutoInt
 from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -54,7 +54,7 @@ train=train.merge(songs,how='left',on='song_id')
 #[Features]
 id_features=    ['msno','song_id']
 member_features=['city','bd','gender']
-songs_features= ['genre_ids','artist_name','language']
+songs_features= ['genre_ids','artist_name','language','song_length']
 context_features=['source_system_tab','source_screen_name','source_type']
 features=id_features+member_features+songs_features+context_features
 
@@ -117,22 +117,34 @@ test_data= data.iloc[6270804:,:].sample(frac=1.0,random_state=42)        #110661
 print("Data Prepared.")
 
 
-train_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language',
+sparse_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language',
                     'source_system_tab','source_screen_name','source_type']
+dense_features=['song_length']
+train_features=sparse_features+dense_features
                 #['genre_pad_'+str(i+1) for i in range(padding_genre_len)]
+print(train_features)
 
-features_sizes=[1+train_data[c].nunique() for c in train_features]#todo: 需要+1留出冷启动id
+features_sizes=[1+train_data[c].nunique() for c in sparse_features]#todo: 需要+1留出冷启动id
 from utils import ColdStartEncoder
 encs=[]
-for c in train_features:
+for c in sparse_features:
     enc = ColdStartEncoder()#放里面 [BUG fix]
     train_data.loc[:,c] = enc.fit_transform(train_data[c])
     valid_data.loc[:,c] = enc.transform(valid_data[c])
     test_data. loc[:,c] = enc.transform(test_data[c])
     encs.append(enc)
+
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+mns=StandardScaler()#MinMaxScaler(feature_range=(0,1))
+train_data.loc[:, dense_features] = mns.fit_transform(train_data[dense_features])
+valid_data.loc[:, dense_features] = mns.transform(valid_data[dense_features])
+test_data.loc[:, dense_features] = mns.transform(test_data[dense_features])
+
 #end transform
 
-X_train,X_valid, X_test,y_train, y_valid, y_test = train_data[train_features],valid_data[train_features],test_data[train_features],\
+X_train_id,X_valid_id, X_test_id,X_train_dense,X_valid_dense,X_test_dense,y_train, y_valid, y_test = \
+                                train_data[sparse_features],valid_data[sparse_features],test_data[sparse_features],\
+                                train_data[dense_features],valid_data[dense_features],test_data[dense_features],\
                                                    train_data['target'],valid_data['target'],test_data['target']
 y_train=y_train.values.reshape((-1,1))
 y_valid=y_valid.values.reshape((-1,1))
@@ -162,17 +174,24 @@ y_test=y_test.values.reshape((-1,1))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(8,8))
 #model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,lambda_l2=0.005)#oup=1时l2=0.005;oup=4时l2=0.0025
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
-model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+#model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+#model=DeepAutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+
+# +dense model
+model=DeepAutoInt(features_sizes,dense_features_size=1,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
-best_score = model.fit(X_train, X_valid, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+#best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid,X_train_dense,X_test_dense, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 
-y_pred_valid = model.predict(X_valid)
+#y_pred_valid = model.predict(X_valid_id)
+y_pred_valid = model.predict(X_valid_id,X_valid_dense)
 y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
 print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
 
 
-y_pred_test=model.predict(X_test)
+y_pred_test=model.predict(X_test_id,X_test_dense)
 y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
 print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
 
@@ -206,7 +225,7 @@ if SUBMIT:
     sub['target']=y_pred_test
     sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
     #LR_F19(pad8)_timeSF_valid0.6795_test0.6511.csv
-
+    #AutoInt_d16 L3 H2 RELU_F11_timeSF_valid0.6891_test0.6583.csv
 
 '''
 #  msno in test_data & not in train_data
