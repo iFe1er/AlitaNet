@@ -69,6 +69,13 @@ data.loc[:,'artist_name']=data['artist_name'].fillna('unknown')       #S.H.E
 data.loc[:,'source_system_tab']=data['source_system_tab'].fillna('unknown')
 data.loc[:,'source_screen_name']=data['source_screen_name'].fillna('unknown')
 data.loc[:,'source_type']=data['source_type'].fillna('unknown')
+data.loc[:,'song_length']=data['song_length'].fillna(1000.0)
+
+data.loc[:,'song_length']=np.log1p(data['song_length']-1000.0)
+data.loc[:,'age_cont']=data['bd'].apply(lambda x:x*1.0)
+data.loc[data['age_cont']<0,'age_cont'] =0.
+data.loc[data['age_cont']>100,'age_cont'] =100.
+
 
 #print(data.isnull().sum())
 
@@ -119,10 +126,10 @@ print("Data Prepared.")
 
 sparse_features=['msno','song_id','city','bd','gender','genre_ids','artist_name','language',
                     'source_system_tab','source_screen_name','source_type']
-dense_features=['song_length']
+dense_features=['song_length','age_cont']
 train_features=sparse_features+dense_features
                 #['genre_pad_'+str(i+1) for i in range(padding_genre_len)]
-print(train_features)
+print(len(train_features)," Dense:",len(dense_features))
 
 features_sizes=[1+train_data[c].nunique() for c in sparse_features]#todo: 需要+1留出冷启动id
 from utils import ColdStartEncoder
@@ -135,7 +142,7 @@ for c in sparse_features:
     encs.append(enc)
 
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
-mns=StandardScaler()#MinMaxScaler(feature_range=(0,1))
+mns=MinMaxScaler(feature_range=(0,1))#StandardScaler()#
 train_data.loc[:, dense_features] = mns.fit_transform(train_data[dense_features])
 valid_data.loc[:, dense_features] = mns.transform(valid_data[dense_features])
 test_data.loc[:, dense_features] = mns.transform(test_data[dense_features])
@@ -178,7 +185,7 @@ y_test=y_test.values.reshape((-1,1))
 #model=DeepAutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 
 # +dense model
-model=DeepAutoInt(features_sizes,dense_features_size=1,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
@@ -208,6 +215,14 @@ if SUBMIT:
     test.loc[:, 'source_system_tab'] = test['source_system_tab'].fillna('unknown')
     test.loc[:, 'source_screen_name'] = test['source_screen_name'].fillna('unknown')
     test.loc[:, 'source_type'] = test['source_type'].fillna('unknown')
+
+    test.loc[:, 'song_length'] = test['song_length'].fillna(1000.0)
+    test.loc[:, 'song_length'] = np.log1p(test['song_length'] - 1000.0)
+
+    test.loc[:, 'age_cont'] = test['bd'].apply(lambda x: x * 1.0)
+    test.loc[test['age_cont'] < 0, 'age_cont'] = 0.
+    test.loc[test['age_cont'] > 100, 'age_cont'] = 100.
+
     '''
     padding_genre_test, _ = multihot_padder(test['genre_ids'],padding_len=padding_genre_len)
     for i in range(padding_genre_len):
@@ -215,17 +230,22 @@ if SUBMIT:
         test[feature_name] = padding_genre_test[:, i].astype(int)
     '''
     predict_data=test[train_features] #(2556790, 8)
-    for i,c in enumerate(train_features):
+    for i,c in enumerate(sparse_features):
         enc = encs[i]
         predict_data[c] = enc.transform(predict_data[c])
-    y_pred_submit=model.predict(predict_data[train_features])
+    predict_data.loc[:, dense_features] = mns.transform(predict_data[dense_features])
+
+    y_pred_submit=model.predict(predict_data[sparse_features],predict_data[dense_features])
     y_pred_test=1./(1.+np.exp(-1.*y_pred_submit))#sigmoid transform
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
     sub['target']=y_pred_test
-    sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
+    sub.to_csv(data_path + 'sub/DAutoInt(24,8)log_d16 L3 H2 RELU_F11_timeSF_valid0.6908_test0.6569.csv', index=False)
+    #sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
     #LR_F19(pad8)_timeSF_valid0.6795_test0.6511.csv
     #AutoInt_d16 L3 H2 RELU_F11_timeSF_valid0.6891_test0.6583.csv
+    #DAutoInt(24,8)_embdL2=1E-5_d16 L3 H2 RELU_F11_timeSF_valid0.6905_test0.6563
+    #sub/DAutoInt(24,8)log_embdL2=1E-5_d16 L3 H2 RELU_F11_timeSF_valid0.6908_test0.6569
 
 '''
 #  msno in test_data & not in train_data

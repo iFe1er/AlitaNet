@@ -393,11 +393,25 @@ d16;L3;H2;R;(24,8)
 d16;L3;H2;R;(24,8)+embd_l2=1e-5
                 0.6905     2       0.6563       0.8169      0.6553       | =>delay=15ms
 F12(+length) d16;L3;H2;R;(24,8)+embd_l2=1e-5
-                0.6883     2       0.6543       0.8107                      test delay also ~15ms
+                0.6883     2       0.6543       0.8107                   |BUG:didn't fillnan. ;test delay also ~15ms  Train finish.
+
+F12(+length_log) d16;L3;H2;R;(24,8)+embd_l2=1e-5
+                0.6908     2       0.6569       0.8162      0.6558       Fit time:1040.51 seconds. Epoch time:148.64 seconds
+                0.6897     3       0.6546       0.8253      0.6522       Fit time:1186.10 seconds. Epoch time:148.26 second
+F12(+length_log) d16;L3;H2;R;(24,8)+embd_l2=0 总结 有embedding_l2速度慢 成绩比较低 而且线上比线下要差。决定在该版本不要embed_l2
+                0.6883     2       0.6548       0.8152      0.6537       Fit time:481.63 seconds. Epoch time:80.27 seconds
+                0.6895     1       0.6586       0.7714      0.6587
+                0.6869     1       0.6546       0.7595      0.6557
+
+F13(+age_cont&length_log;standard scaler) d16;L3;H2;R;(24,8)+embd_l2=0 加这个特征影响不大
+                0.6894     1       0.6573       0.7729      0.6575
+                0.6883     2       0.6568       0.8131      0.6555
+F13(+age_cont&length_log;MinMaxscaler(0,1)) d16;L3;H2;R;(24,8)+embd_l2=0
+                0.6892     1       0.6586       0.7622      0.6584       |<=Deepautoint best
 
 
 
-F19
+PADDING F19
 LR              0.6795     16      0.6514       0.7948      0.6526
 FM(k=8)         0.6846     10      0.6529       0.8343      0.6482     padding特征：NOT GOOD!
 

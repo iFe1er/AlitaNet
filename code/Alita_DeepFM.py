@@ -297,6 +297,7 @@ class Alita_DeepFM(BaseEstimator):
 
 
     def fit(self,ids_train,ids_test,y_train,y_test,dense_train=None,dense_test=None,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20,):
+        start_time = time.time()
         #[bug fix]mutable prevention 19/06/27
         ids_train=ids_train.copy()
         ids_test=ids_test.copy()
@@ -368,7 +369,7 @@ class Alita_DeepFM(BaseEstimator):
             raise Exception("Loss type %s not supported"%self.loss_type)
 
         #todo EMBEDL2 coef
-        self.loss += self.lambda_l2*self.L2_reg + embed_L2*1e-5
+        self.loss += self.lambda_l2*self.L2_reg #+ embed_L2*1e-5
         self.optimizer=tf.train.AdamOptimizer(lr).minimize(self.loss)
 
         if self.metric_type is not None:
@@ -386,6 +387,7 @@ class Alita_DeepFM(BaseEstimator):
         is_greater_better = False if self.metric_type is None else True #默认Loss越小越好
         cur_min_loss = 1e8 if not is_greater_better else -1e8
         best_weights = {v.name: v.eval(self.sess) for v in tf.trainable_variables()}
+
         for epoch in range(N_EPOCH):
             train_loss=0.;y_preds_train=[]
             total_batches=int(ids_train.shape[0]/batch_size)
@@ -449,6 +451,7 @@ class Alita_DeepFM(BaseEstimator):
                 self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
                 best_score = cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test, })
                 print("[Early Stop]Best Score:",best_score,' at round ',cur_best_rounds)
+                print("Train finish. Fit time:%.2f seconds. Epoch time:%.2f seconds"%(time.time()-start_time,(time.time()-start_time)/(epoch+1)))
                 return best_score
 
             #auc reset op
@@ -457,6 +460,7 @@ class Alita_DeepFM(BaseEstimator):
         self.sess.run(tf.tuple([tf.assign(var, best_weights[var.name]) for var in tf.trainable_variables()]))
         best_score=cur_min_loss #self.sess.run(self.loss, feed_dict={self.ids: ids_test, self.y: y_test,})
         print("[Epoch Maxi]Best Score:", best_score,' at round ',cur_best_rounds)
+        print("Train finish. Fit time:%.2f seconds. Epoch time:%.2f seconds"%(time.time()-start_time,(time.time()-start_time)/N_EPOCH))
         return best_score
 
 
