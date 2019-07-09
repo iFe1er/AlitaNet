@@ -185,7 +185,8 @@ y_test=y_test.values.reshape((-1,1))
 #model=DeepAutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 
 # +dense model
-model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+#model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+model=DeepFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8))
 
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据

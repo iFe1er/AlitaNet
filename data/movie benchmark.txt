@@ -409,7 +409,8 @@ F13(+age_cont&length_log;standard scaler) d16;L3;H2;R;(24,8)+embd_l2=0 加这个
 F13(+age_cont&length_log;MinMaxscaler(0,1)) d16;L3;H2;R;(24,8)+embd_l2=0
                 0.6892     1       0.6586       0.7622      0.6584       |<=Deepautoint best
 
-
+DFM  (24,8) F13(2conts:age_cont&length_log;MinMaxscaler(0,1))
+                0.6873     2       0.6548       0.8014      0.6545       |delay:2.237ms compare:DFM(k8(24,8))   0.6870     2       0.6547       0.8169      0.6527
 
 PADDING F19
 LR              0.6795     16      0.6514       0.7948      0.6526
