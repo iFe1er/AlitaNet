@@ -186,7 +186,9 @@ y_test=y_test.values.reshape((-1,1))
 
 # +dense model
 #model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
-model=DeepFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8))
+#model=DeepFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8))
+#model=MLP(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,16))
+model=DeepAFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(24,8))
 
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
@@ -243,6 +245,7 @@ if SUBMIT:
     sub['target']=y_pred_test
     sub.to_csv(data_path + 'sub/DAutoInt(24,8)log_d16 L3 H2 RELU_F11_timeSF_valid0.6908_test0.6569.csv', index=False)
     #sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
+    #DFM(continues)_F13_timeSF_valid0.6873_test0.6548.csv
     #LR_F19(pad8)_timeSF_valid0.6795_test0.6511.csv
     #AutoInt_d16 L3 H2 RELU_F11_timeSF_valid0.6891_test0.6583.csv
     #DAutoInt(24,8)_embdL2=1E-5_d16 L3 H2 RELU_F11_timeSF_valid0.6905_test0.6563

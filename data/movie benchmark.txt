@@ -409,8 +409,17 @@ F13(+age_cont&length_log;standard scaler) d16;L3;H2;R;(24,8)+embd_l2=0 加这个
 F13(+age_cont&length_log;MinMaxscaler(0,1)) d16;L3;H2;R;(24,8)+embd_l2=0
                 0.6892     1       0.6586       0.7622      0.6584       |<=Deepautoint best
 
-DFM  (24,8) F13(2conts:age_cont&length_log;MinMaxscaler(0,1))
-                0.6873     2       0.6548       0.8014      0.6545       |delay:2.237ms compare:DFM(k8(24,8))   0.6870     2       0.6547       0.8169      0.6527
+F13(2conts:age_cont&length_log;MinMaxscaler(0,1))
+MLP  (32,16)    0.6882     2       0.6579       0.8000      0.6565       |delay:2.20ms  0.6887 2 0.6560 0.8068 KG=0.6549
+DFM  (24,8)     0.6873     2       0.6548       0.8014      0.6545       |delay:2.24ms compare:DFMsparse(k8(24,8))   0.6870     2       0.6547       0.8169      KG=0.6527
+DCFM (24,8)     0.6861     3       0.6546       0.8219      0.6529       |delay:3.10ms    0.6855     3       0.6511
+
+1.BN  phase placeholder
+2.bucket
+3.MicroSoft？ / Zillow？
+4.sequence training wide->deep using phase？
+5.AMS solution + DeepWalk SVD etc..
+
 
 PADDING F19
 LR              0.6795     16      0.6514       0.7948      0.6526
