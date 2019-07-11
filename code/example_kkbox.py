@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,DeepAFM,AutoInt,DeepAutoInt
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,DeepAFM,AutoInt,DeepAutoInt
 from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -183,25 +183,27 @@ y_test=y_test.values.reshape((-1,1))
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
 #model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 #model=DeepAutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+#model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+model=FiBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 
 # +dense model
 #model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 #model=DeepFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8))
 #model=MLP(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,16))
-model=DeepAFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(24,8))
+#model=DeepAFM(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(24,8))
 
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
-#best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
-best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid,X_train_dense,X_test_dense, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+#best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid,X_train_dense,X_test_dense, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 
-#y_pred_valid = model.predict(X_valid_id)
-y_pred_valid = model.predict(X_valid_id,X_valid_dense)
+y_pred_valid = model.predict(X_valid_id)
+#y_pred_valid = model.predict(X_valid_id,X_valid_dense)
 y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
 print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
 
-
-y_pred_test=model.predict(X_test_id,X_test_dense)
+y_pred_test=model.predict(X_test_id)
+#y_pred_test=model.predict(X_test_id,X_test_dense)
 y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
 print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
 
@@ -238,13 +240,15 @@ if SUBMIT:
         predict_data[c] = enc.transform(predict_data[c])
     predict_data.loc[:, dense_features] = mns.transform(predict_data[dense_features])
 
-    y_pred_submit=model.predict(predict_data[sparse_features],predict_data[dense_features])
+    y_pred_submit = model.predict(predict_data[sparse_features])
+    #y_pred_submit=model.predict(predict_data[sparse_features],predict_data[dense_features])
     y_pred_test=1./(1.+np.exp(-1.*y_pred_submit))#sigmoid transform
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
     sub['target']=y_pred_test
     sub.to_csv(data_path + 'sub/DAutoInt(24,8)log_d16 L3 H2 RELU_F11_timeSF_valid0.6908_test0.6569.csv', index=False)
     #sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
+    #Bifm_F11_timeSF_valid0
     #DFM(continues)_F13_timeSF_valid0.6873_test0.6548.csv
     #LR_F19(pad8)_timeSF_valid0.6795_test0.6511.csv
     #AutoInt_d16 L3 H2 RELU_F11_timeSF_valid0.6891_test0.6583.csv

@@ -42,6 +42,26 @@ class NFM():
     def predict(self, ids_pred):
         return self.model.predict(ids_pred)
 
+class BiFM():
+    def __init__(self,features_sizes,loss_type='rmse',k=10,dropout_keeprate=1.0,metric_type=None):
+        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,k=k,use_LR=True,use_FM=True,use_MLP=False,use_NFM=False,use_BiFM=True,dropout_keeprate=dropout_keeprate,metric_type=metric_type)
+
+    def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
+        return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
+
+    def predict(self, ids_pred):
+        return self.model.predict(ids_pred)
+
+class FiBiFM():
+    def __init__(self,features_sizes,loss_type='rmse',k=10,dropout_keeprate=1.0,metric_type=None):
+        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,k=k,use_LR=True,use_FM=True,use_MLP=False,use_NFM=False,use_BiFM=True,use_SE=True,dropout_keeprate=dropout_keeprate,metric_type=metric_type)
+
+    def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
+        return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
+
+    def predict(self, ids_pred):
+        return self.model.predict(ids_pred)
+
 class MLP():
     def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',deep_layers=(256,256),activation=tf.nn.relu,k=10,dropout_keeprate=1.0,metric_type=None):
         self.model=Alita_DeepFM(features_sizes=features_sizes,dense_features_size=dense_features_size,loss_type=loss_type,k=k,deep_layers=deep_layers,activation=activation,use_LR=False,use_FM=False,use_MLP=True,dropout_keeprate=dropout_keeprate,metric_type=metric_type)

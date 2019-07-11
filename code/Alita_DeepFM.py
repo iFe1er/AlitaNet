@@ -4,10 +4,11 @@ import time
 from sklearn.base import BaseEstimator
 from sklearn.metrics import roc_auc_score
 from utils import batcher,isBetter
+from tensorflow import python as tfpy
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_BiFM=False,use_SE=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -24,6 +25,8 @@ class Alita_DeepFM(BaseEstimator):
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
         self.use_NFM=use_NFM
+        self.use_BiFM=use_BiFM
+        self.use_SE=use_SE
         self.use_AutoInt=use_AutoInt
         self.autoint_params=autoint_params if autoint_params is not None else {"autoint_d":8,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True}
 
@@ -91,6 +94,14 @@ class Alita_DeepFM(BaseEstimator):
             #self.NFM_weights['Wout'] = tf.Variable(tf.ones([self.k,1]))
             self.NFM_weights['bout']=tf.Variable(initializer([1]))
 
+        if self.use_BiFM:
+            self.bilinear_weights = {}
+            self.bilinear_weights['w'] = tf.Variable(initializer([self.k, self.k]))
+            self.bilinear_weights['wse'] = tf.Variable(initializer([self.k, self.k]))
+        if self.use_SE:
+            self.SE_weights={}
+            self.SE_weights['W1']=tf.Variable(initializer([self.fields,self.fields//2]))
+            self.SE_weights['W2'] = tf.Variable(initializer([self.fields//2, self.fields]))
 
         if self.use_AutoInt:
             #d=8 head=2 layer=3
@@ -165,6 +176,23 @@ class Alita_DeepFM(BaseEstimator):
         sum_square=tf.reduce_sum(tf.square(embedding),axis=1)#(None,k)
         cross_term=0.5*tf.reduce_sum(square_sum-sum_square,axis=1,keepdims=True)#(None,1)
         return cross_term
+
+    def Bilinear_FM(self,embedding,bilinear_weights,se_emb):#embedding:(None,field,k) bilinear_weights:(N,k,k)
+        b_weights=bilinear_weights['w'] if se_emb else bilinear_weights['wse']
+        cross_term=[]
+        for i in range(self.fields):
+            for j in range(i+1,self.fields):
+                #embedding[:,i,:] shape是(None,k)
+                cross_term.append(tf.matmul(embedding[:,i,:],b_weights)*embedding[:,j,:])#(None,k)
+                #cross_term.append(embedding[:,i,:]*embedding[:,j,:])#(None,k) ！！不压缩成(None,1)
+        cross_term=tf.stack(cross_term,axis=1)#(None,c,k)
+        return cross_term
+        #return tf.expand_dims(tf.reduce_sum(cross_term,axis=[1,2]),axis=1)#(None,1)
+
+        #fc=tf.layers.Dense(24,activation=tf.nn.relu,kernel_initializer=tfpy.keras.initializers.glorot_normal())(tf.reshape(cross_term,[-1,cross_term.shape[1]*cross_term.shape[2]]))
+        #fc=tf.layers.Dense(1,activation=tf.nn.relu,kernel_initializer=tfpy.keras.initializers.glorot_normal())(fc)
+        #print("FC.shape",fc.shape)
+        #return fc
 
     #FM_DependencyEliminate,求每个不同field交叉内积的和，但去掉了依赖的包含交叉
     def FMDE(self,embedding):#embedding:(None,field,k)
@@ -323,6 +351,9 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_FM or self.use_MLP or self.use_AutoInt:
             self.embedding,embed_L2=self.Embedding(self.ids,self.embedding_weights)#(None,fields,k)
 
+        if self.use_SE:
+            self.embeddingSE=self.SELayer(self.embedding,self.SE_weights)
+
         self.pred=0
         if self.use_LR:
             #bug detected. LR didn't keepdims
@@ -332,6 +363,17 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_NFM:
             print("use NFM")
             self.pred+=self.NFM(self.embedding,self.NFM_weights)
+        elif self.use_BiFM:
+            if self.use_SE:
+                print("use Fibifm")
+                cross_term = tf.concat([self.Bilinear_FM(self.embedding, self.bilinear_weights, se_emb=False),
+                                        self.Bilinear_FM(self.embeddingSE, self.bilinear_weights, se_emb=True),
+                                        ],axis=-1)  # N,c,2k
+                self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
+            else:
+                print("use bifm")
+                cross_term = self.Bilinear_FM(self.embedding, self.bilinear_weights,se_emb=False)  # N,c,k
+                self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
         elif self.use_FM and not self.attention_FM:
             print("use FM")
             if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
@@ -483,6 +525,13 @@ class Alita_DeepFM(BaseEstimator):
         time_cost=time.time()-start_time
         print("Time cost: %3f seconds, average epoch time:%2f ms" % (time_cost,(time_cost/len(outputs))*1000))
         return self.output
+
+    def SELayer(self,embedding,SE_weights):
+        squeeze=tf.reduce_mean(embedding,axis=2) #N,f
+        squeeze=tf.nn.relu(tf.matmul(squeeze,SE_weights['W1'])) #squeeze:N,f W1:f,f//2 -> N,f//2
+        excit  =tf.nn.sigmoid(tf.matmul(squeeze,SE_weights['W2']))#N,f
+        excit = tf.expand_dims(excit,axis=2)#N,f,1
+        return tf.multiply(embedding,excit)#
 
     def __del__(self):
         try:
