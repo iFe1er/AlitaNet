@@ -8,7 +8,7 @@ from tensorflow import python as tfpy
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_BiFM=False,use_SE=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -27,6 +27,7 @@ class Alita_DeepFM(BaseEstimator):
         self.use_NFM=use_NFM
         self.use_BiFM=use_BiFM
         self.use_SE=use_SE
+        self.use_FiBiNet=use_FiBiNet
         self.use_AutoInt=use_AutoInt
         self.autoint_params=autoint_params if autoint_params is not None else {"autoint_d":8,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True}
 
@@ -102,6 +103,12 @@ class Alita_DeepFM(BaseEstimator):
             self.SE_weights={}
             self.SE_weights['W1']=tf.Variable(initializer([self.fields,self.fields//2]))
             self.SE_weights['W2'] = tf.Variable(initializer([self.fields//2, self.fields]))
+        if self.use_FiBiNet:
+            self.FiBiNet_weights={}
+            self.FiBiNet_weights['W1']=tf.Variable(initializer([self.c*self.k*2,(self.c*self.k)//20]))
+            self.FiBiNet_weights['b1'] = tf.Variable(initializer([(self.c*self.k)//20]))
+            self.FiBiNet_weights['W2']=tf.Variable(initializer([(self.c*self.k)//20,1]))
+            self.FiBiNet_weights['b2'] = tf.Variable(initializer([1]))
 
         if self.use_AutoInt:
             #d=8 head=2 layer=3
@@ -365,15 +372,23 @@ class Alita_DeepFM(BaseEstimator):
             self.pred+=self.NFM(self.embedding,self.NFM_weights)
         elif self.use_BiFM:
             if self.use_SE:
-                print("use Fibifm")
                 cross_term = tf.concat([self.Bilinear_FM(self.embedding, self.bilinear_weights, se_emb=False),
                                         self.Bilinear_FM(self.embeddingSE, self.bilinear_weights, se_emb=True),
                                         ],axis=-1)  # N,c,2k
-                self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
+                if self.use_FiBiNet:
+                    print("use FiBiNet")#deep backend
+                    cross_term=tf.reshape(cross_term,[-1,self.c*self.k*2])#None,2ck
+                    cross_term=tf.nn.relu(tf.matmul(cross_term,self.FiBiNet_weights['W1'])+self.FiBiNet_weights['b1'])
+                    self.pred += (tf.matmul(cross_term,self.FiBiNet_weights['W2'])+self.FiBiNet_weights['b2'])
+                else:
+                    print("use Fibifm")
+                    self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
+
             else:
                 print("use bifm")
                 cross_term = self.Bilinear_FM(self.embedding, self.bilinear_weights,se_emb=False)  # N,c,k
                 self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
+
         elif self.use_FM and not self.attention_FM:
             print("use FM")
             if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
@@ -381,9 +396,9 @@ class Alita_DeepFM(BaseEstimator):
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use CFM")
-            #afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
-            afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
+            print("use AFM")
+            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
+            #afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
             self.pred+=afm_out
             self.L2_reg+=reg
 
