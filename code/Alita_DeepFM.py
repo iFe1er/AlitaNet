@@ -8,7 +8,7 @@ from tensorflow import python as tfpy
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_MLR=False,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,MLR_m=4,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -20,6 +20,8 @@ class Alita_DeepFM(BaseEstimator):
         self.activation=activation
         self.k=k #embedding size K
         self.use_LR=use_LR
+        self.use_MLR = use_MLR
+        self.MLR_m = MLR_m
         self.use_FM=use_FM
         self.use_MLP=use_MLP
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
@@ -48,6 +50,10 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_LR:
             self.w=tf.Variable(initializer([self.num_features,1]))
             self.b=tf.Variable(initializer([1]))
+        if self.use_MLR:
+            self.MLR_u=tf.Variable(initializer([self.num_features,self.MLR_m]))
+            self.MLR_w=tf.Variable(initializer([self.num_features,self.MLR_m]))
+
         if self.use_FM or self.use_MLP or self.use_AutoInt:
             #[Embedding]
             self.embedding_weights=tf.Variable(initializer([self.num_features,k])) # sum_features_sizes,k
@@ -149,8 +155,14 @@ class Alita_DeepFM(BaseEstimator):
 
     #todo bug: 要keepdims 输出(None,1)而不是(None,)
     def LR(self,ids,w,b):
-        #ids:(None,field)  w:(num_features,1)  out:(None,field,1) ->reshape(N,f)
+        #ids:(None,field)  w:(num_features,1)  out:(None,field,1) ->reshape(None,fields)
         return tf.reduce_sum(tf.reshape(tf.nn.embedding_lookup(w,ids),[-1,self.fields]),axis=1,keepdims=True)+b #(N,1)
+
+    # TODO problem of sigmoid. learner分数不能在加sigmoid了，因为最终loss里有.
+    def MLR(self,ids,u,w):
+        region_scores= tf.nn.softmax(tf.reduce_sum(tf.nn.embedding_lookup(u,ids),axis=1))#N,f,m (m=MLR_m aka pieces) ---reshape---->None,m
+        learner_scores= tf.reduce_sum(tf.nn.embedding_lookup(w,ids),axis=1)#N,f,m->None,m
+        return tf.reduce_sum(tf.multiply(region_scores,learner_scores),axis=1,keepdims=True)#N,1
 
     def Embedding(self,ids,params):
         #params:self.embedding(sum_features_sizes,k)   ids:(None,fields)  out=shape(ids)+shape(params[1:])=(None,fields,k)
@@ -365,6 +377,9 @@ class Alita_DeepFM(BaseEstimator):
         if self.use_LR:
             #bug detected. LR didn't keepdims
             self.pred=self.LR(self.ids,self.w,self.b)
+        if self.use_MLR:
+            print("use Mix of LR.")
+            self.pred+=self.MLR(self.ids,self.MLR_u,self.MLR_w)
 
         #only one FM will be used.
         if self.use_NFM:

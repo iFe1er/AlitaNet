@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt,MLR
 from sklearn.metrics import roc_auc_score, log_loss
 
 data_path='../data/ieee_fraud_detection/'
@@ -60,17 +60,18 @@ y_train=X_train['isFraud'].values.reshape((-1,1))
 y_valid=X_valid['isFraud'].values.reshape((-1,1))
 
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
+#model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,32))
 #model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,32))
+model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=4)
 best_score = model.fit(X_train[cate_features], X_valid[cate_features], y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=500,early_stopping_rounds=3)#0.0005->0.001(1e-3 bs=1000)
 
 y_pred=model.predict(test[cate_features])
 y_pred = 1. / (1. + np.exp(-1. * y_pred))
 sample_submission['isFraud'] = y_pred
-#sample_submission.to_csv(data_path+'sub/sub01_LR_F49_kf3_0.8774.csv',index=False)
 #sample_submission.to_csv(data_path+'sub/sub01_LR_F49_timeSF_0.8154.csv',index=False)
+#sample_submission.to_csv(data_path+'sub/sub01_LR_F49_kf3_0.8774.csv',index=False)
 
 #LR:0.8774 KG:0.8261
 #TIMESF
@@ -81,7 +82,7 @@ sample_submission['isFraud'] = y_pred
 # BiFM 0.8136  (very slow when fields a lot)
 # WND  0.8037@1
 # DeepFM 0.8083@1
-
+# MLR m=2: with sig:0.67   no sig:0.8093@2  | m=4 no sig 0.8061@10 KG=0.8378 |m=12 nosig 0.8096@1 KG=0.8472
 '''
 import lightgbm as lgb
 train_Dataset = lgb.Dataset(X_train[cate_features],label=y_train.reshape(-1))
