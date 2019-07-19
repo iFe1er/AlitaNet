@@ -179,9 +179,9 @@ y_test=y_test.values.reshape((-1,1))
 #model=NFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=WideAndDeep(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,32,16))
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,32,16))
-model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)#,lambda_l2=0.005)#oup=1时l2=0.005;oup=4时l2=0.0025
+#model=AFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8)#,lambda_l2=0.005)#oup=1时l2=0.005;oup=4时l2=0.0025
 #model=DeepAFM(features_sizes,k=8,loss_type='binary',metric_type='auc',attention_FM=8,deep_layers=(8,8))
-#model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
+model=AutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 #model=DeepAutoInt(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,32,16),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
 #model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FiBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
@@ -267,7 +267,15 @@ tt=enc.transform(test_data['msno'])
 #print(tt[test_data['msno']=='lFUV7lsihiFMPKb+C9EV9w2Y1NsKpgPArWl+Bm7BCCU='])  #all zero
 '''
 
-
+'''
+#可视化autoint
+import seaborn as sns
+t=model.model.get_attention_mask()  #len(t)=1476
+tt=np.concatenate(t[:-1],axis=0)#(2950,500,11,11)
+tt=tt.mean(axis=0).mean(axis=0)#(11,11)
+tt=pd.DataFrame(tt,columns=sparse_features,index=sparse_features)
+sns.heatmap(tt, cmap="YlGnBu",annot=True)
+'''
 
 '''
 import lightgbm as lgb

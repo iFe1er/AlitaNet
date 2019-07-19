@@ -344,7 +344,7 @@ class Alita_DeepFM(BaseEstimator):
                 if i>=1:
                     ids_train.loc[:,column]=ids_train[column]+sum(self.features_sizes[:i])
                     ids_test.loc[:, column]=ids_test[column]+sum(self.features_sizes[:i])
-        if self.attention_FM:#储存为classs变量并用在get_attention里获取attention
+        if self.attention_FM or self.use_AutoInt:#储存为classs变量并用在get_attention里获取attention
             self.ids_train,self.ids_test,self.y_train,self.y_test = ids_train,ids_test,y_train,y_test
 
         self.ids=tf.placeholder(tf.int32,[None,self.fields])
@@ -556,12 +556,16 @@ class Alita_DeepFM(BaseEstimator):
             pass
 
     def get_attention_mask(self):
-        if not self.attention_FM:
+        if not self.attention_FM and not self.use_AutoInt:
             return
         self.attention_masks=[]
-        for bx, by in batcher(self.ids_test,self.y_test, batch_size=500,hash_size=self.hash_size):#dense
-            self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
-        return np.array(self.attention_masks)
+        for bx,bx_dense,by in batcher(X_=self.ids_test,y_=self.y_test, batch_size=500,hash_size=self.hash_size):#dense
+            if self.attention_FM:
+                self.attention_masks.append(self.sess.run(self.normalize_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
+            else:
+                self.attention_masks.append(self.sess.run(self.normalize_autoint_att_score, feed_dict={self.ids: bx, self.y: by,self.dropout_keeprate_holder:1.0}))
+        #return np.array(self.attention_masks)
+        return self.attention_masks
 
     def coldStartAvgTool(self):
         ops = []

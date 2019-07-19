@@ -242,6 +242,8 @@ for rounds in range(1,6):
     test_AUC=roc_auc_score(y_test,y_pred_test)
     print("ROC-AUC score on test set: %.4f" %test_AUC)
 
+    #import scikitplot as skplt
+    #skplt.metrics.plot_roc(y_valid.reshape(-1),np.concatenate([1.-y_pred_valid,y_pred_valid],axis=1))
 
     #SUBMIT=True
     #if SUBMIT:
