@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 def batcher(X_, y_=None,X_dense=None, batch_size=-1,hash_size=None):
     n_samples = X_.shape[0]
@@ -55,6 +56,36 @@ def list_batcher(Xs_, y_=None, batch_size=-1):
             yield (ret_x, ret_y)
         else:
             yield ret_x
+
+def _build_regression_signature(input_tensor, output_tensor):
+  """Helper function for building a regression SignatureDef."""
+  input_tensor_info = tf.saved_model.utils.build_tensor_info(input_tensor)
+  signature_inputs = {
+      tf.saved_model.signature_constants.REGRESS_INPUTS: input_tensor_info
+  }
+  output_tensor_info = tf.saved_model.utils.build_tensor_info(output_tensor)
+  signature_outputs = {
+      tf.saved_model.signature_constants.REGRESS_OUTPUTS: output_tensor_info
+  }
+  return tf.saved_model.signature_def_utils.build_signature_def(
+      signature_inputs, signature_outputs,
+      tf.saved_model.signature_constants.REGRESS_METHOD_NAME)
+
+def _build_classification_signature(input_tensor, scores_tensor):
+  """Helper function for building a classification SignatureDef."""
+  input_tensor_info = tf.saved_model.utils.build_tensor_info(input_tensor)
+  signature_inputs = {
+      tf.saved_model.signature_constants.CLASSIFY_INPUTS: input_tensor_info
+  }
+  output_tensor_info = tf.saved_model.utils.build_tensor_info(scores_tensor)
+  signature_outputs = {
+      tf.saved_model.signature_constants.CLASSIFY_OUTPUT_SCORES:
+          output_tensor_info
+  }
+  return tf.saved_model.signature_def_utils.build_signature_def(
+      signature_inputs, signature_outputs,
+      tf.saved_model.signature_constants.CLASSIFY_METHOD_NAME)
+
 
 def isBetter(a,b,is_greater_better=True):
     if is_greater_better:

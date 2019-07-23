@@ -3,8 +3,9 @@ import numpy as np
 import time
 from sklearn.base import BaseEstimator
 from sklearn.metrics import roc_auc_score
-from utils import batcher,isBetter
+from utils import batcher,isBetter,_build_regression_signature,_build_classification_signature
 from tensorflow import python as tfpy
+import os
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
@@ -152,6 +153,37 @@ class Alita_DeepFM(BaseEstimator):
         config.gpu_options.allow_growth = True
         #config.gpu_options.per_process_gpu_memory_fraction = 0.7
         return tf.Session(config=config)
+
+
+    def build_model(self,export_path_base='C:/Users/13414/tfserving/tme_ad/saved/classification',version=1):
+        export_path = os.path.join(
+            tf.compat.as_bytes(export_path_base),
+            tf.compat.as_bytes(str(version)))
+        if not os.path.isdir(export_path):
+            print("making dir:",export_path)
+            os.mkdir(export_path)
+        builder = tf.saved_model.builder.SavedModelBuilder(export_path)
+        predict_signature_inputs={"x": tf.saved_model.utils.build_tensor_info(self.ids)}
+        predict_signature_outputs = {"y": tf.saved_model.utils.build_tensor_info(self.pred)}
+        predict_signature_def=(
+        tf.saved_model.signature_def_utils.build_signature_def(
+            predict_signature_inputs, predict_signature_outputs,
+            tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
+        #import from utils:
+        target_signature_func=_build_regression_signature if self.loss_type in ['mse','rmse'] else _build_classification_signature
+        signature_def_map = {
+            "target":
+                target_signature_func(self.ids, self.pred),
+            tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                predict_signature_def
+        }
+        builder.add_meta_graph_and_variables(
+            self.sess, [tf.saved_model.tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
+        )
+        builder.save()
+
 
     #todo bug: 要keepdims 输出(None,1)而不是(None,)
     def LR(self,ids,w,b):
