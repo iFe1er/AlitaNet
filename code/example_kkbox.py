@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt,MLR
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt,DeepBiFM,MLR
 from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -173,7 +173,7 @@ y_test=y_test.values.reshape((-1,1))
 
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
-model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=12)
+#model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=12)
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,24))
@@ -187,6 +187,7 @@ model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=12)
 #model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FiBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FiBiNet(features_sizes,k=8,loss_type='binary',metric_type='auc')
+model=DeepBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc', deep_layers=(64, 32, 16))
 
 # +dense model
 #model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
@@ -209,6 +210,32 @@ y_pred_test=model.predict(X_test_id)
 y_pred_test=1./(1.+np.exp(-1.*y_pred_test))#sigmoid transform
 print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
 
+SAVE=False
+if SAVE:
+    model.model.build_model(export_path_base='C:/Users/13414/tfserving/kkbox/DBiFM',version=1)#MLR
+
+SERVE=False
+if SERVE:
+    import requests
+    import time
+    serving_data=X_train_id.head(5).copy()
+    for i, column in enumerate(serving_data.columns):
+        if i >= 1:
+            serving_data.loc[:, column] = serving_data[column] + sum(features_sizes[:i])
+    payload_dict=dict()
+    payload_dict['instances']=serving_data.values.tolist()
+    payload=str(payload_dict).replace('\'','\"')
+    start_time = time.time()
+    r = requests.post("http://192.168.99.100:8501/v1/models/kkbox_dbifm:predict", data=payload)#lr mlr dbifm
+    end_time = time.time()
+    response_time = 1000 * (end_time - start_time)
+    print('response time:%.3f ms' % response_time)
+    print('response:', r.text)
+    #print("GPU predict:",model.model.predict(X_train_id.head(5).copy()))
+
+    #LR: 5 3.886  100:4ms               1000:6.8ms 5000: 16.5ms
+    #MLR:5 3.90   100:3.87 500:5.816ms  1000:7.76ms 5000:25ms
+    #DBIFM 5:3.90  100:3.9 500:9.76ms   1000:11.71ms 5000:29ms  GPU17ms/epoch same prediction;
 
 SUBMIT=False
 if SUBMIT:

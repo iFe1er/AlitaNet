@@ -159,9 +159,9 @@ class Alita_DeepFM(BaseEstimator):
         export_path = os.path.join(
             tf.compat.as_bytes(export_path_base),
             tf.compat.as_bytes(str(version)))
-        if not os.path.isdir(export_path):
-            print("making dir:",export_path)
-            os.mkdir(export_path)
+        if not os.path.isdir(export_path_base):
+            print("making dir:",export_path_base)
+            os.mkdir(export_path_base)
         builder = tf.saved_model.builder.SavedModelBuilder(export_path)
         predict_signature_inputs={"x": tf.saved_model.utils.build_tensor_info(self.ids)}
         predict_signature_outputs = {"y": tf.saved_model.utils.build_tensor_info(self.pred)}

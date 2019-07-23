@@ -8,3 +8,4 @@ data/kkbox/*
 data/ieee_fraud_detection/*
 data/paper/*
 data/*.xlsx
+serving/
