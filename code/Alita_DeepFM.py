@@ -9,7 +9,7 @@ import os
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_MLR=False,use_FM=True,use_MLP=True,FM_ignore_interaction=None,attention_FM=0,MLR_m=4,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_MLR=False,use_FM=True,use_MLP=True,use_CrossNet_layers=0,FM_ignore_interaction=None,attention_FM=0,MLR_m=4,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -25,6 +25,7 @@ class Alita_DeepFM(BaseEstimator):
         self.MLR_m = MLR_m
         self.use_FM=use_FM
         self.use_MLP=use_MLP
+        self.use_CrossNet_layers=use_CrossNet_layers
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
         self.use_NFM=use_NFM
@@ -146,7 +147,15 @@ class Alita_DeepFM(BaseEstimator):
                 self.bias['b'+str(i+1)]=tf.Variable(initializer([layer]))
             self.weights['out']= tf.Variable(initializer([self.deep_layers[-1],1]))
             self.bias['out'] = tf.Variable(initializer([1]))
+
+        if self.use_CrossNet_layers>0:
+            self.CrossNet_weights={}
+            for i in range(self.use_CrossNet_layers):
+                self.CrossNet_weights['w'+str(i)]=initializer([self.fields*self.k+self.dense_features_size,1])
+                self.CrossNet_weights['b'+str(i)]=initializer([self.fields*self.k+self.dense_features_size,1])
+
         print("[Info] Model Inited. Prediction Layer: LR %s; FM %s; MLP %s; AutoInt %s" % (use_LR,use_FM,use_MLP,use_AutoInt))
+
 
     def _init_session(self):
         config = tf.ConfigProto()
@@ -200,7 +209,7 @@ class Alita_DeepFM(BaseEstimator):
         #params:self.embedding(sum_features_sizes,k)   ids:(None,fields)  out=shape(ids)+shape(params[1:])=(None,fields,k)
         return tf.nn.embedding_lookup(params,ids),tf.nn.l2_loss(params)
 
-    def MLP(self,x,weights,bias):
+    def MLP(self,x,weights,bias,return_pred=True):
         last_layer=None
         for i,_ in enumerate(self.deep_layers):
             if i==0:
@@ -208,7 +217,16 @@ class Alita_DeepFM(BaseEstimator):
             else:
                 this_layer=self.activation(tf.matmul(last_layer, weights['h'+str(i+1)]) + bias['b'+str(i+1)])
                 last_layer=this_layer
-        return tf.matmul(last_layer,weights['out'])+bias['out']
+        if return_pred:
+            return tf.matmul(last_layer,weights['out'])+bias['out']
+        else:
+            return last_layer
+
+    def CrossNet(self,x0,weights):#x0:(None,f*k,1) xlT=(None,1,f*k) w:(f*k,1)  =>  (N,f*k,1) + (f*k,1) + (N,f*k,1)  | if dense: f*k变成f*k+dense
+        xl=x0
+        for i in range(self.use_CrossNet_layers):
+            xl=tf.matmul(x0,tf.tensordot(tf.transpose(xl,perm=[0,2,1]),weights['w'+str(i)],axes=[2,0]))+weights['b'+str(i)]+xl
+        return tf.squeeze(xl,axis=-1)#(N,f*k)
 
     #每个不同field交叉内积的和
     def FM(self,embedding):#embedding:(None,field,k)
@@ -454,12 +472,19 @@ class Alita_DeepFM(BaseEstimator):
             for _l in range(self.autoint_params['autoint_layers']):
                 self.y_deep=self.AutoInt(self.y_deep,self.AutoInt_weights,layer=_l)#N,f,d
             self.pred+=tf.matmul(tf.reshape(self.y_deep,shape=[-1,self.fields*self.autoint_d*self.autoint_head]),self.AutoInt_weights['W_out'])+self.AutoInt_weights['b_out']
-        if self.use_MLP:
+
+        if self.use_CrossNet_layers>0:#combine crossnet with DNN
+            MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])#(N,f*k)
+            if self.dense_features_size>0:
+                MLP_in=tf.concat([MLP_in,self.dense_inputs],axis=1)#(N,f*k+dense)
+            self.MLP_out=self.MLP(MLP_in,self.weights,self.bias,return_pred=False)#(None,last_layers)
+            self.CrossNet_out=self.CrossNet(tf.expand_dims(MLP_in,axis=-1),self.CrossNet_weights)#(None,f*k+d)
+            self.pred += tf.keras.layers.Dense(1, use_bias=False, activation=None)(tf.concat([self.MLP_out,self.CrossNet_out],axis=1))
+        elif self.use_MLP:#并联dnn pred
             MLP_in = tf.reshape(self.embedding, [-1, self.fields * self.k])#(N,f*k)
             if self.dense_features_size>0:
                 MLP_in=tf.concat([MLP_in,self.dense_inputs],axis=1)#(N,f*k+dense)
             self.pred+=self.MLP(MLP_in, self.weights, self.bias)
-            #self.pred=self.SqueezeEmbLR(self.embedding,self.SqueezeEmb_LRWeight)
         assert self.pred is not None,"must have one predicion layer"
 
 

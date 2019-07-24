@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import os
-from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt,DeepBiFM,MLR
+from models import LR,FM,MLP,WideAndDeep,DeepFM,FMAndDeep,AFM,NFM,BiFM,FiBiFM,FiBiNet,DeepAFM,AutoInt,DeepAutoInt,DeepBiFM,MLR,DCN
 from sklearn.metrics import roc_auc_score, log_loss
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -187,7 +187,8 @@ y_test=y_test.values.reshape((-1,1))
 #model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FiBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FiBiNet(features_sizes,k=8,loss_type='binary',metric_type='auc')
-model=DeepBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc', deep_layers=(64, 32, 16))
+#model=DeepBiFM(features_sizes,k=8,loss_type='binary',metric_type='auc', deep_layers=(64, 32, 16))
+model=DCN(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,32,16),use_CrossNet_layers=3)
 
 # +dense model
 #model=DeepAutoInt(features_sizes,dense_features_size=2,k=8,loss_type='binary',metric_type='auc',deep_layers=(24,8),autoint_params={"autoint_d":16,'autoint_heads':2,"autoint_layers":3,'relu':True,'use_res':True})
