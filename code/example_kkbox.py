@@ -270,12 +270,14 @@ if SUBMIT:
         predict_data[c] = enc.transform(predict_data[c])
     predict_data.loc[:, dense_features] = mns.transform(predict_data[dense_features])
 
+    #LGB/Catboost Predict_data here
+
     y_pred_submit = model.predict(predict_data[sparse_features])
     #y_pred_submit=model.predict(predict_data[sparse_features],predict_data[dense_features])
-    y_pred_test=1./(1.+np.exp(-1.*y_pred_submit))#sigmoid transform
+    y_pred_submit=1./(1.+np.exp(-1.*y_pred_submit))#sigmoid transform
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
-    sub['target']=y_pred_test
+    sub['target']=y_pred_submit
     sub.to_csv(data_path + 'sub/MLR(m=6 noSig adam)_F11_timeSF_valid0.6884_test0.6559.csv', index=False)
     #sub.to_csv(data_path+'sub/LR_F11_timeSF_valid0.6795_test0.6515.csv',index=False)
     #Bifm_F11_timeSF_valid0
@@ -306,55 +308,62 @@ tt=pd.DataFrame(tt,columns=sparse_features,index=sparse_features)
 sns.heatmap(tt, cmap="YlGnBu",annot=True)
 '''
 
-'''
-import lightgbm as lgb
-train_Dataset = lgb.Dataset(X_train,label=y_train.reshape(-1))
-valid_Dataset = lgb.Dataset(X_valid,label=y_valid.reshape(-1))
-params = {
-    'objective': 'binary',
-    'metric': 'auc',
-    'boosting': 'gbdt',
-    'learning_rate': 0.1 ,
-    'verbose': 0,
-    'num_leaves': 63,
-    'bagging_fraction': 1.0,#0.8 bad
-    'bagging_freq': 1,
-    'bagging_seed': 1,
-    'feature_fraction': 1.0,#0.8 bad
-    'feature_fraction_seed': 1,
-    'max_bin': 255,
-    'max_depth': 15,
-    }
-bst = lgb.train(params, train_Dataset, num_boost_round=500, valid_sets=[train_Dataset,valid_Dataset],early_stopping_rounds=10)
+TRAIN_LGB=False
+if TRAIN_LGB:
+    import lightgbm as lgb
+    train_Dataset = lgb.Dataset(X_train_id,label=y_train.reshape(-1))
+    valid_Dataset = lgb.Dataset(X_valid_id,label=y_valid.reshape(-1))
+    params = {
+        'objective': 'binary',
+        'metric': 'auc',
+        'boosting': 'gbdt',
+        'learning_rate': 0.1 ,
+        'verbose': 0,
+        'num_leaves': 63,
+        'bagging_fraction': 1.0,#0.8 bad
+        'bagging_freq': 1,
+        'bagging_seed': 1,
+        'feature_fraction': 1.0,#0.8 bad
+        'feature_fraction_seed': 1,
+        'max_bin': 255,
+        'max_depth': 15,
+        }
+    bst = lgb.train(params, train_Dataset, num_boost_round=500, valid_sets=[train_Dataset,valid_Dataset],early_stopping_rounds=10)
 
+    y_pred_valid = bst.predict(X_valid_id)
+    print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
 
-y_pred_valid = bst.predict(X_valid)
-print("ROC-AUC score on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
+    y_pred_test=bst.predict(X_test_id)
+    print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
 
-
-y_pred_test=bst.predict(X_test)
-print("ROC-AUC score on test set: %.4f" %roc_auc_score(y_test,y_pred_test))
-
-if False:
-    test=pd.read_csv(data_path+'test.csv')
-    test=test.merge(members,how='left',on='msno')
-    test=test.merge(songs,how='left',on='song_id')
-    test.loc[:,'gender'] =    test['gender'].fillna('unknown')            #
-    test.loc[:,'genre_ids']=  test['genre_ids'].fillna('-1')              #465|458
-    test.loc[:,'language']=   test['language'].fillna(-1).astype(int)     #52.0->52
-    test.loc[:,'artist_name']=test['artist_name'].fillna('unknown')       #S.H.E
-    test.loc[:, 'source_system_tab'] = test['source_system_tab'].fillna('unknown')
-    test.loc[:, 'source_screen_name'] = test['source_screen_name'].fillna('unknown')
-    test.loc[:, 'source_type'] = test['source_type'].fillna('unknown')
-    
-    predict_data=test[train_features] #(2556790, 8)
-    for i,c in enumerate(train_features):
-        enc = encs[i]
-        predict_data[c] = enc.transform(predict_data[c])
-        
-    y_pred_submit=bst.predict(predict_data[train_features])#LGB不需要sigmoid
+    #LGB SUBMIT
+    y_pred_submit=bst.predict(predict_data[sparse_features])#LGB不需要sigmoid
     #submission online
     sub=pd.read_csv(data_path+'sample_submission.csv')
     sub['target']=y_pred_submit
     sub.to_csv(data_path+'sub/LGB_F11_timeSF_valid0.6470_test0.6339.csv',index=False)
-'''
+
+TRAIN_CAT=False
+if TRAIN_CAT:
+    from catboost import CatBoost, Pool
+    use_cat_features = True
+    cat_features = [i for i in range(len(sparse_features))] if use_cat_features else None
+    train_pool = Pool(X_train_id, label=y_train.reshape(-1), cat_features=cat_features)
+    valid_pool = Pool(X_valid_id, label=y_valid.reshape(-1), cat_features=cat_features)
+
+    param = {'iterations': 200, 'loss_function': 'Logloss', 'eval_metric': 'AUC', 'learning_rate': 0.1, 'depth': 6,
+             'logging_level': 'Verbose', 'random_seed': 0}
+    cat_model = CatBoost(param)
+    cat_model.fit(train_pool, eval_set=valid_pool, early_stopping_rounds=5)
+    y_pred_valid = cat_model.predict(valid_pool, prediction_type='Probability')[:, -1]  # y_pred_valid[:,1] #1的概率
+    print("Use cat_features:%s. AUC on valid set:%.4f" % (str(use_cat_features), roc_auc_score(y_valid, y_pred_valid)))
+
+    y_pred_test=cat_model.predict(X_test_id)
+    print("Use cat_features:%s. AUC on test set: %.4f" %(str(use_cat_features),roc_auc_score(y_test,y_pred_test)))
+
+
+    y_pred_submit = cat_model.predict(predict_data[sparse_features],prediction_type='Probability')[:,1]
+    # y_pred_submit=model.predict(predict_data[sparse_features],predict_data[dense_features])
+    sub = pd.read_csv(data_path + 'sample_submission.csv')
+    sub['target'] = y_pred_submit
+    sub.to_csv(data_path + 'sub/CAT_F11_timeSF_valid0.6939_test0.6614.csv', index=False)
