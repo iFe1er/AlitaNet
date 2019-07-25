@@ -6,6 +6,7 @@ data/avazu/*
 data/last_fm_360K/*
 data/kkbox/*
 data/ieee_fraud_detection/*
+data/amazon/*
 data/paper/*
 data/*.xlsx
 serving/

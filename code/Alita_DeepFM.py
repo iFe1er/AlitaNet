@@ -9,7 +9,7 @@ import os
 
 class Alita_DeepFM(BaseEstimator):
     # features_sizes: array. number of features in every fields.e.g.[943,1682] user_nunique,movie_nunique
-    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_MLR=False,use_FM=True,use_MLP=True,use_CrossNet_layers=0,FM_ignore_interaction=None,attention_FM=0,MLR_m=4,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
+    def __init__(self,features_sizes,dense_features_size=0,loss_type='rmse',k=10,deep_layers=(256,256),activation=tf.nn.relu,use_LR=True,use_MLR=False,use_FM=True,use_MLP=True,use_CrossNet_layers=0,FM_ignore_interaction=None,attention_FM=0,use_CFM=False,MLR_m=4,use_NFM=False,use_BiFM=False,use_SE=False,use_FiBiNet=False,use_AutoInt=False,autoint_params=None,dropout_keeprate=1.0,lambda_l2=0.0,hash_size=None,metric_type=None):
         self.features_sizes=features_sizes
         self.fields=len(features_sizes)
         self.num_features=sum(features_sizes) if hash_size is None else hash_size
@@ -28,6 +28,7 @@ class Alita_DeepFM(BaseEstimator):
         self.use_CrossNet_layers=use_CrossNet_layers
         self.FM_ignore_interaction=[] if FM_ignore_interaction==None else FM_ignore_interaction
         self.attention_FM=attention_FM#同时代表attention hidden layer size
+        self.use_CFM=use_CFM
         self.use_NFM=use_NFM
         self.use_BiFM=use_BiFM
         self.use_SE=use_SE
@@ -69,27 +70,28 @@ class Alita_DeepFM(BaseEstimator):
 
             #SAFM:
             #self.AFM_weights['downsample_W'] = tf.Variable(initializer([self.c, 1]))
-
+        if self.use_FM and self.use_CFM:
             #CFM:
-            self.AFM_weights['conv_W']=tf.Variable(initializer([self.c*self.k,1]))
+            self.CFM_weights={}
+            self.CFM_weights['conv_W']=tf.Variable(initializer([self.c*self.k,1]))
             self.oup=1
             #todo
-            self.AFM_weights['filter'] = tf.Variable(initializer([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
+            self.CFM_weights['filter'] = tf.Variable(initializer([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
             #self.AFM_weights['filter'] = tf.Variable(tf.ones([self.c, self.k, 1 ,self.oup]))#4D [filter_height, filter_width, in_channels, out_channels]
-            self.AFM_weights['proj']=tf.Variable(initializer([self.oup,1]))
+            self.CFM_weights['proj']=tf.Variable(initializer([self.oup,1]))
 
             #CNFM:
             h1,h2=8,4
             self.h1,self.h2=h1,h2
-            self.AFM_weights['h1_W']=tf.Variable(initializer([self.c,h1]))
-            self.AFM_weights['h1_b']=tf.Variable(initializer([h1]))
-            self.AFM_weights['h2_W']=tf.Variable(initializer([h1,h2]))
-            self.AFM_weights['h2_b']=tf.Variable(initializer([h2]))
-            self.AFM_weights['out_W']=tf.Variable(initializer([h2,1]))
-            self.AFM_weights['out_b']=tf.Variable(initializer([1]))
-            self.AFM_weights['filter_h1']= tf.Variable(initializer([h1,self.k,1,1]))
-            self.AFM_weights['filter_h2']= tf.Variable(initializer([h2,self.k,1,1]))
-            self.AFM_weights['filter_out']=tf.Variable(initializer([1, self.k,1,1]))
+            self.CFM_weights['h1_W']=tf.Variable(initializer([self.c,h1]))
+            self.CFM_weights['h1_b']=tf.Variable(initializer([h1]))
+            self.CFM_weights['h2_W']=tf.Variable(initializer([h1,h2]))
+            self.CFM_weights['h2_b']=tf.Variable(initializer([h2]))
+            self.CFM_weights['out_W']=tf.Variable(initializer([h2,1]))
+            self.CFM_weights['out_b']=tf.Variable(initializer([1]))
+            self.CFM_weights['filter_h1']= tf.Variable(initializer([h1,self.k,1,1]))
+            self.CFM_weights['filter_h2']= tf.Variable(initializer([h2,self.k,1,1]))
+            self.CFM_weights['filter_out']=tf.Variable(initializer([1, self.k,1,1]))
 
 
         if self.use_FM and self.use_NFM:
@@ -320,7 +322,7 @@ class Alita_DeepFM(BaseEstimator):
         return tf.matmul(out,AFM_weights['projection_p'])#(None,k)*(k,1)=(None,1)
 
     #convolution based FM  (None,c,k)->(None,c*k)->(None,1)
-    def CFM(self,embedding,AFM_weights):
+    def CFM(self,embedding,CFM_weights):
         cross_term=[]
         for i in range(self.fields):
             for j in range(i+1,self.fields):
@@ -337,9 +339,9 @@ class Alita_DeepFM(BaseEstimator):
 
         #imp2 conv2d style: tune self.oup=1 is best.
         cross_term = tf.expand_dims(cross_term,axis=-1)
-        out=tf.nn.conv2d(cross_term,AFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
+        out=tf.nn.conv2d(cross_term,CFM_weights['filter'],strides=[1,1,1,1],padding='VALID')#N,1,1,1 iff oup=1; #N,1,1,k iff oup=self.oup
         out=tf.reshape(out,shape=[-1,self.oup])#(N,1,1,oup)->(None,oup)
-        return (out,tf.nn.l2_loss(AFM_weights['filter']) ) if self.oup==1 else (tf.matmul(out,AFM_weights['proj']),tf.nn.l2_loss(AFM_weights['filter']))
+        return (out,tf.nn.l2_loss(CFM_weights['filter']) ) if self.oup==1 else (tf.matmul(out,CFM_weights['proj']),tf.nn.l2_loss(CFM_weights['filter']))
 
     def CNFM(self, embedding, AFM_weights):
         cross_term=[]
@@ -454,17 +456,21 @@ class Alita_DeepFM(BaseEstimator):
                 cross_term = self.Bilinear_FM(self.embedding, self.bilinear_weights,se_emb=False)  # N,c,k
                 self.pred += tf.expand_dims(tf.reduce_sum(cross_term, axis=[1, 2]), axis=1)  # N,1
 
-        elif self.use_FM and not self.attention_FM:
+        elif self.use_FM and not self.attention_FM and not self.use_CFM:
             print("use FM")
             if len(self.FM_ignore_interaction)==0:#if self.use_FM and self.FM_ignore_interaction==[]
                 self.pred += self.FM2(self.embedding)
             if len(self.FM_ignore_interaction)>0:
                 self.pred+=self.FMDE(self.embedding)
         elif self.use_FM and self.attention_FM:
-            print("use CFM")
-            #afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
-            afm_out,reg= self.CFM(self.embedding,self.AFM_weights)
+            print("use AFM")
+            afm_out,reg= self.AFM(self.embedding,self.AFM_weights)
             self.pred+=afm_out
+            self.L2_reg+=reg
+        elif self.use_FM and self.use_CFM:
+            print("use CFM")
+            cfm_out,reg= self.CFM(self.embedding,self.CFM_weights)
+            self.pred+=cfm_out
             self.L2_reg+=reg
 
         if self.use_AutoInt:
