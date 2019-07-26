@@ -48,15 +48,15 @@ y_valid=y_valid.values.reshape((-1,1))
 #model=DeepBiFM(features_sizes,k=8,loss_type='binary', deep_layers=(64, 32, 16))
 #model=DCN(features_sizes,k=8,loss_type='binary',deep_layers=(64,32,16),use_CrossNet_layers=3)
 
-model=MLR(features_sizes,loss_type='binary',MLR_m=4)
+model=MLR(features_sizes,loss_type='binary',MLR_m=4)#,metric_type='AUC')
 
 best_score = model.fit(X_train[cate_features], X_valid[cate_features], y_train, y_valid, lr=0.001, N_EPOCH=200, batch_size=3277,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 y_pred_valid = model.predict(X_valid[cate_features])
 y_pred_valid=1./(1.+np.exp(-1.*y_pred_valid))#sigmoid transform
 print("Logloss on valid set: %.4f" %log_loss(y_valid,y_pred_valid))
+#print("AUC on valid set: %.4f" %roc_auc_score(y_valid,y_pred_valid))
 
-
-#benchmark
+#benchmark DataSize:26215x9
 #LGB 0.1536
 #Cat:0.1354
 
@@ -73,8 +73,9 @@ print("Logloss on valid set: %.4f" %log_loss(y_valid,y_pred_valid))
 #BIFM:0.1502 rerun:0.1557
 #FiBiFM:0.1579 0.1571
 #DCN(64,32) 0.1593 (16,16)0.1582 (8,8):0.1807
-#MLR m=4 0.1493  m=8 0.1465  m=12 0.1469
+#MLR m=4 0.1493  m=8 0.1465  m=12 0.1469  | AUC metrics:0.8768
 #rank: Catbst>>AFM>MLR>FM>CFM>LGB>Bifm,WND>LR>DFM>DCN
+#auc MLR 0.8768 ; CatBoost 0.8898   (up 1.2%AUC)
 
 '''
 import lightgbm as lgb
@@ -113,3 +114,4 @@ if TRAIN_CAT:
     y_pred_valid = cat_model.predict(valid_pool, prediction_type='Probability')[:,-1]#y_pred_valid[:,1] #1的概率
     print("Use cat_features:%s. Logloss on valid set:%.4f" %(str(use_cat_features),log_loss(y_valid,y_pred_valid)))
     # catfeatures:0.1354  | no_cat:0.1715
+    #print("Use cat_features:%s. AUC on valid set:%.4f" % (str(use_cat_features), roc_auc(y_valid, y_pred_valid)))

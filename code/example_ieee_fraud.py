@@ -95,7 +95,7 @@ if SUBMIT:
 # AFM:0.8157@1 KG=0.8452
 # CFM:0.8142@1 KG=0.8425
 
-#KG rank: CATbst>LGB>MLR>LR>AFM>FM
+#KG rank: CATbst>LGB>MLR>LR>AFM>FM  Catbst比MLR高1.2%AUC
 
 '''
 import lightgbm as lgb
