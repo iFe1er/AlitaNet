@@ -174,6 +174,8 @@ y_test=y_test.values.reshape((-1,1))
 #<Model>
 #model=LR(features_sizes,loss_type='binary',metric_type='auc')
 #model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=12)
+#model=MFM(features_sizes,k=8,loss_type='binary',metric_type='auc',MFM_m=2)
+
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc',FM_ignore_interaction=[(0,2),(0,3),(0,4)]) #FMDE
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(64,24))
@@ -198,7 +200,7 @@ model=DCN(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(6
 
 print(model)
 #[BUG fix] 老版本一定要传入拷贝..wtf~! 06/27修补BUG 内部copy防止影响数据
-best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid, lr=0.0005, N_EPOCH=35, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
+best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid, lr=0.0005, N_EPOCH=35, batch_size=4096,early_stopping_rounds=3)#0.0005->0.001(1e-3 bs=1000)
 #best_score = model.fit(X_train_id, X_valid_id, y_train, y_valid,X_train_dense,X_test_dense, lr=0.0005, N_EPOCH=50, batch_size=4096,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 
 y_pred_valid = model.predict(X_valid_id)

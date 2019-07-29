@@ -1,0 +1,83 @@
+init():
+        if self.use_MFM:
+            self.MFM_u_FM=tf.Variable(initializer([self.num_features,self.k,self.MFM_m]))       #  region score
+            self.MFM_u_LR=tf.Variable(initializer([self.num_features,self.MFM_m]))       #  region score
+            self.MFM_w_FM=tf.Variable(initializer([self.num_features,self.k,self.MFM_m]))# learner score
+            self.MFM_w_LR=tf.Variable(initializer([self.num_features,self.MFM_m]))
+ 
+fit():
+       if self.use_MFM:
+            print("use Mix of FM.")
+            self.pred+=self.MFM(self.ids,self.MFM_u_FM,self.MFM_u_LR,self.MFM_w_FM,self.MFM_w_LR)
+
+function:
+
+    #w/o lr learner (1,2)
+    def MFM(self,ids,u,w_FM,w_LR):
+        region_scores= tf.nn.softmax(tf.reduce_sum(tf.nn.embedding_lookup(u,ids),axis=1))#N,f,m (m=MLR_m aka pieces) ---reshape---->None,m
+
+        mix_fm_embed=tf.nn.embedding_lookup(w_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed),axis=1)#(None,k,m)
+        learner_scores = 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        return tf.reduce_sum(tf.multiply(region_scores,learner_scores),axis=1,keepdims=True)#N,1
+
+
+
+    #with lr learner (1,1+2)
+    def MFM(self,ids,u,w_FM,w_LR):
+        region_scores= tf.nn.softmax(tf.reduce_sum(tf.nn.embedding_lookup(u,ids),axis=1))#N,f,m (m=MLR_m aka pieces) ---reshape---->None,m
+        learner_scores = tf.reduce_sum(tf.nn.embedding_lookup(w_LR, ids), axis=1)#None,m
+
+        mix_fm_embed=tf.nn.embedding_lookup(w_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed),axis=1)#(None,k,m)
+        learner_scores += 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        return tf.reduce_sum(tf.multiply(region_scores,learner_scores),axis=1,keepdims=True)#N,1
+
+
+    1+2,1+2
+    def MFM(self,ids,u_FM,u_LR,w_FM,w_LR):
+        region_scores= tf.nn.softmax(tf.reduce_sum(tf.nn.embedding_lookup(u_LR,ids),axis=1))#N,f,m (m=MLR_m aka pieces) ---reshape---->None,m
+        mix_fm_embed_region=tf.nn.embedding_lookup(u_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed_region,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed_region),axis=1)#(None,k,m)
+        region_scores += 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        learner_scores = tf.reduce_sum(tf.nn.embedding_lookup(w_LR, ids), axis=1)#None,m
+        mix_fm_embed_learner=tf.nn.embedding_lookup(w_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed_learner,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed_learner),axis=1)#(None,k,m)
+        learner_scores += 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        return tf.reduce_sum(tf.multiply(region_scores,learner_scores),axis=1,keepdims=True)#N,1
+
+
+    2,2
+    def MFM(self,ids,u_FM,u_LR,w_FM,w_LR):
+        #region_scores= tf.nn.softmax(tf.reduce_sum(tf.nn.embedding_lookup(u_LR,ids),axis=1))#N,f,m (m=MLR_m aka pieces) ---reshape---->None,m
+        mix_fm_embed_region=tf.nn.embedding_lookup(u_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed_region,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed_region),axis=1)#(None,k,m)
+        region_scores = 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        #learner_scores = tf.reduce_sum(tf.nn.embedding_lookup(w_LR, ids), axis=1)#None,m
+        mix_fm_embed_learner=tf.nn.embedding_lookup(w_FM,ids)#N,f,k,m
+        square_sum=tf.square(tf.reduce_sum(mix_fm_embed_learner,axis=1))#(None,k,m)
+        sum_square=tf.reduce_sum(tf.square(mix_fm_embed_learner),axis=1)#(None,k,m)
+        learner_scores = 0.5*tf.reduce_sum(square_sum-sum_square,axis=1)#(None,m)
+
+        return tf.reduce_sum(tf.multiply(region_scores,learner_scores),axis=1,keepdims=True)#N,1
+
+models.py
+class MFM():
+    def __init__(self,features_sizes,loss_type='rmse',k=10,MFM_m=4,hash_size=None,metric_type=None):
+        self.model=Alita_DeepFM(features_sizes=features_sizes,loss_type=loss_type,k=k,use_LR=False,use_MFM=True,MFM_m=MFM_m,use_FM=False,use_MLP=False,hash_size=hash_size,metric_type=metric_type)
+
+    def fit(self,ids_train,ids_test,y_train,y_test,lr=0.001,N_EPOCH=50,batch_size=200,early_stopping_rounds=20):
+        return self.model.fit(ids_train,ids_test,y_train,y_test,lr=lr,N_EPOCH=N_EPOCH,batch_size=batch_size,early_stopping_rounds=early_stopping_rounds)
+
+    def predict(self, ids_pred):
+        return self.model.predict(ids_pred)

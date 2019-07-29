@@ -61,14 +61,16 @@ X_train,X_valid=train.iloc[:472432,:].sample(frac=1.0,random_state=42),\
 y_train=X_train['isFraud'].values.reshape((-1,1))
 y_valid=X_valid['isFraud'].values.reshape((-1,1))
 
-#model=LR(features_sizes,loss_type='binary',metric_type='auc')
+model=LR(features_sizes,loss_type='binary',metric_type='auc')
 #model=FM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=MLP(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,32))
 #model=BiFM(features_sizes,k=8,loss_type='binary',metric_type='auc')
 #model=DeepFM(features_sizes,k=8,loss_type='binary',metric_type='auc',deep_layers=(32,32))
 #model=AFM(features_sizes,loss_type='binary',metric_type='auc',attention_FM=8)
-model=CFM(features_sizes,loss_type='binary',metric_type='auc')
+#model=CFM(features_sizes,loss_type='binary',metric_type='auc')
 #model=MLR(features_sizes,loss_type='binary',metric_type='auc',MLR_m=16)
+#model=MFM(features_sizes,k=8,loss_type='binary',metric_type='auc',MFM_m=2)
+
 best_score = model.fit(X_train[cate_features], X_valid[cate_features], y_train, y_valid, lr=0.0005, N_EPOCH=50, batch_size=500,early_stopping_rounds=3)#0.0005->0.001(1e-3 bs=1000)
 
 SUBMIT=False
@@ -94,6 +96,7 @@ if SUBMIT:
 # MLR m=2: with sig:0.67   no sig:0.8093@2  | m=4 no sig 0.8061@10 KG=0.8378 |m=12 nosig 0.8096@1 KG=0.8472 |m=15 nosig 0.8117@2 KG=0.8381
 # AFM:0.8157@1 KG=0.8452
 # CFM:0.8142@1 KG=0.8425
+# MFM nosig nolr: m=2 0.8240@3 KG=0.8370 |
 
 #KG rank: CATbst>LGB>MLR>LR>AFM>FM  Catbst比MLR高1.2%AUC
 

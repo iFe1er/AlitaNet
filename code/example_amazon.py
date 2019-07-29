@@ -49,6 +49,7 @@ y_valid=y_valid.values.reshape((-1,1))
 #model=DCN(features_sizes,k=8,loss_type='binary',deep_layers=(64,32,16),use_CrossNet_layers=3)
 
 model=MLR(features_sizes,loss_type='binary',MLR_m=4)#,metric_type='AUC')
+#model=MFM(features_sizes,k=8,loss_type='binary',MFM_m=8)
 
 best_score = model.fit(X_train[cate_features], X_valid[cate_features], y_train, y_valid, lr=0.001, N_EPOCH=200, batch_size=3277,early_stopping_rounds=5)#0.0005->0.001(1e-3 bs=1000)
 y_pred_valid = model.predict(X_valid[cate_features])
@@ -74,6 +75,10 @@ print("Logloss on valid set: %.4f" %log_loss(y_valid,y_pred_valid))
 #FiBiFM:0.1579 0.1571
 #DCN(64,32) 0.1593 (16,16)0.1582 (8,8):0.1807
 #MLR m=4 0.1493  m=8 0.1465  m=12 0.1469  | AUC metrics:0.8768
+#MFM(w/o lr learner) m=2 k=8:0.1500 | m=3 k=8 0.1494 | m=4 k=8 0.1523  | m=8 k=4 0.1514 | m=8,k=8 0.1520
+#MFM(with lr learner)m=2 k=8:0.1509 | m=3 k=8 0.1506 | m=4 k=8 0.1501
+#MFM(rank:region=1+2;learner=1+2 ) m=2  0.1564 | m=3 0.1566 |
+
 #rank: Catbst>>AFM>MLR>FM>CFM>LGB>Bifm,WND>LR>DFM>DCN
 #auc MLR 0.8768 ; CatBoost 0.8898   (up 1.2%AUC)
 
